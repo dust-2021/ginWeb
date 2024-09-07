@@ -1,0 +1,72 @@
+package controller
+
+import (
+	"ginWeb/config"
+	"ginWeb/model"
+	"ginWeb/model/systemMode"
+	"ginWeb/service/dataType"
+	"ginWeb/utils/auth"
+	"ginWeb/utils/database"
+	"github.com/gin-gonic/gin"
+	"net/http"
+	"time"
+)
+
+type Login struct {
+	Url string
+}
+
+type postData struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+func (l Login) V1(c *gin.Context) {
+	var j postData
+	err := c.BindJSON(&j)
+	if err != nil {
+		return
+	}
+	// 查找用户
+	var u systemMode.User
+	result := database.Db.Where("phone = ?", j.Username).Or("email = ?", j.Username).First(&u)
+	pwd, err := auth.HashPassword(j.Password)
+	if result.Error != nil || err != nil || pwd != u.PasswordHash {
+		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{Code: 1,
+			Message: "username or password valid"})
+		return
+	}
+	// 查询权限
+	permissions, err := model.GetPermissionById(u.Id)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{Code: 1, Message: "get permission error: " + err.Error()})
+		return
+	}
+
+	token := auth.Token{
+		UserId:     u.Id,
+		UserUUID:   u.Uuid,
+		Permission: permissions,
+		Expire:     time.Now().Add(time.Second * time.Duration(config.Conf.Server.TokenExpire)),
+	}
+	data := ""
+	if config.Conf.Server.TokenEncrypt {
+		data, err = token.AesEncrypt()
+	} else {
+		data, err = token.Sign()
+	}
+	if err != nil {
+		c.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code:    1,
+			Message: "generate token failed",
+		})
+		return
+	}
+
+	c.JSON(200, dataType.JsonRes{Code: 0, Data: data})
+}
+
+func (l Login) RegisterRoute(g *gin.RouterGroup) error {
+	g.Handle("POST", l.Url, l.V1)
+	return nil
+}
