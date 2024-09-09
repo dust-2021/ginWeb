@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ginWeb/config"
 	"ginWeb/model/inital"
+	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 )
 import "ginWeb/route"
@@ -16,7 +17,9 @@ func application() *gin.Engine {
 	if config.Conf.Database.Initial {
 		inital.InitializeMode()
 	}
-	g := gin.Default()
+	g := gin.New()
+	g.Use(gin.Recovery())
+	g.Use(gin.LoggerWithWriter(loguru.Logu.Writer()))
 	// 注册路由
 	_ = route.InitRoute(g)
 	return g

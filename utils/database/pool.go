@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"ginWeb/config"
+	"ginWeb/utils/loguru"
 	"github.com/go-redis/redis/v8"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -33,9 +34,9 @@ func init() {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	if err := sqlDB.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		loguru.Logu.Info("Failed to ping database: %s", err.Error())
 	} else {
-		log.Println("Successfully connected to the database")
+		loguru.Logu.Info("Successfully connected to the database")
 	}
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Conf.Redis.Host, config.Conf.Redis.Port),
@@ -45,9 +46,9 @@ func init() {
 	})
 	resp := rdb.Ping(context.Background())
 	if err := resp.Err(); err != nil {
-		log.Fatalf("Failed to ping redis: %v", err)
+		loguru.Logu.Error("Failed to ping redis: %s", err.Error())
 	} else {
-		log.Println("Successfully connected to redis")
+		loguru.Logu.Info("Successfully connected to redis")
 	}
 	Rdb = rdb
 }

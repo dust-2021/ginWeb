@@ -4,24 +4,23 @@ package exchange
 type ExInterface interface {
 	Method() string
 	Route() string
-	Data() map[string]interface{}
+	ReqData() map[string]interface{}
 	Sign() bool
-	ID() string
+	SetResult([]byte, error)
 }
 
 // ExResp 接口请求结果
 type ExResp struct {
-	Id    string
-	Data  string
+	Data  interface{}
 	Error error
 }
 
 // Exchange 交易所类
 type Exchange interface {
-	// Sign 请求签名
-	Sign(msg string) (data string, err error)
-	// AsyncRequest 异步发送请求
-	AsyncRequest(reqs ...*ExInterface) (responses *[]ExResp, err error)
-	// SyncRequest 同步发送请求
-	SyncRequest(reqs ...*ExInterface) (responses *[]ExResp, err error)
+	// Request 同步请求
+	Request(ExInterface)
+	// AsyncRequests 异步发送请求
+	AsyncRequests(...ExInterface) error
+	// SyncRequests 同步发送请求
+	SyncRequests(...ExInterface) error
 }
