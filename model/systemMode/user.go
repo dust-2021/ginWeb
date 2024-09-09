@@ -12,7 +12,3 @@ type User struct {
 	PasswordHash    string `gorm:"size:255;NOT NULL;DEFAULT:''"`
 	Available       bool   `gorm:"DEFAULT:false"`
 }
-
-func (u User) Delete() error {
-	return u.BaseModel.Delete()
-}

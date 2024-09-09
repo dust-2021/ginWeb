@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// 字符串"{"alg": "hmac", "type": "jwt"}"的b64编码
+const jwtHeader string = "eyJhbGciOiAiaG1hYyIsICJ0eXBlIjogImp3dCJ9"
+
 type Token struct {
 	UserId     int64                  `json:"userId"`
 	UserUUID   string                 `json:"userUUID"`
@@ -25,10 +28,14 @@ type Token struct {
 	Expire     time.Time              `json:"expire"`
 }
 
-// Sign 使用hmac生成签名
+// Sign 使用hmac生成Token
 func (receiver Token) Sign() (token string, err error) {
 	data, err := json.Marshal(receiver)
 	if err != nil {
+		return
+	}
+	if len(data) > config.Conf.Server.TokenSize {
+		err = errors.New("token data too long")
 		return
 	}
 
@@ -42,7 +49,7 @@ func (receiver Token) Sign() (token string, err error) {
 
 	// 将加密后的数据转换为b64字符串
 	encryptedDataHex := base64.StdEncoding.EncodeToString(encryptedData)
-	return fmt.Sprintf("hmac.%s.%s", base64.StdEncoding.EncodeToString(data), encryptedDataHex), nil
+	return fmt.Sprintf("%s.%s.%s", jwtHeader, base64.StdEncoding.EncodeToString(data), encryptedDataHex), nil
 }
 
 // checkSign 验证token并返回Token对象
@@ -98,6 +105,10 @@ func pkcs7Padding(ciphertext []byte, blockSize int) []byte {
 func (receiver Token) AesEncrypt() (token string, err error) {
 	// 使用json数据加密
 	data, err := json.Marshal(receiver)
+	if len(data) > config.Conf.Server.TokenSize {
+		err = errors.New("token data too long")
+		return
+	}
 	data = pkcs7Padding(data, aes.BlockSize)
 	if err != nil {
 		return
@@ -163,7 +174,7 @@ func CheckToken(tokenText string) (token Token, err error) {
 		return
 	}
 	if time.Now().After(token.Expire) {
-		return token, errors.New("token已过期")
+		return token, errors.New("token expired")
 	}
 	return
 }

@@ -13,7 +13,6 @@ import (
 )
 
 type Login struct {
-	Url string
 }
 
 type postData struct {
@@ -21,7 +20,7 @@ type postData struct {
 	Password string `json:"password" binding:"required"`
 }
 
-func (l Login) V1(c *gin.Context) {
+func (receiver Login) V1(c *gin.Context) {
 	var j postData
 	err := c.BindJSON(&j)
 	if err != nil {
@@ -66,7 +65,6 @@ func (l Login) V1(c *gin.Context) {
 	c.JSON(200, dataType.JsonRes{Code: 0, Data: data})
 }
 
-func (l Login) RegisterRoute(g *gin.RouterGroup) error {
-	g.Handle("POST", l.Url, l.V1)
-	return nil
+func (receiver Login) RegisterRoute(r string, g *gin.RouterGroup) {
+	g.Handle("POST", r, receiver.V1)
 }

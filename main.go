@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"ginWeb/config"
 	"ginWeb/model/inital"
 	"github.com/gin-gonic/gin"
@@ -23,5 +24,5 @@ func application() *gin.Engine {
 
 func main() {
 	g := application()
-	_ = g.Run(":8080")
+	_ = g.Run(fmt.Sprintf(":%d", config.Conf.Server.Port))
 }

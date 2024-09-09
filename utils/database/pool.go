@@ -1,8 +1,10 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"ginWeb/config"
+	"github.com/go-redis/redis/v8"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -12,6 +14,7 @@ import (
 )
 
 var Db *gorm.DB
+var Rdb *redis.Client
 
 func init() {
 	db, err := gorm.Open(mysql.Open(config.Conf.Database.Link), &gorm.Config{
@@ -32,6 +35,19 @@ func init() {
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("Failed to ping database: %v", err)
 	} else {
-		fmt.Println("Successfully connected to the database")
+		log.Println("Successfully connected to the database")
 	}
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", config.Conf.Redis.Host, config.Conf.Redis.Port),
+		Password: config.Conf.Redis.Password,
+		DB:       0,
+		PoolSize: 10,
+	})
+	resp := rdb.Ping(context.Background())
+	if err := resp.Err(); err != nil {
+		log.Fatalf("Failed to ping redis: %v", err)
+	} else {
+		log.Println("Successfully connected to redis")
+	}
+	Rdb = rdb
 }

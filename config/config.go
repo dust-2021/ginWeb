@@ -12,13 +12,22 @@ type Config struct {
 		Secret       string `yaml:"secret"`
 		Debug        bool   `yaml:"debug"`
 		TokenEncrypt bool   `yaml:"tokenEncrypt"`
+		TokenSize    int    `yaml:"tokenSize"`
 		TokenExpire  int    `yaml:"tokenExpire"`
+		Logger       struct {
+			Path  string `yaml:"path"`
+			Level string `yaml:"level"`
+		}
 	} `yaml:"server"`
 	Database struct {
 		Initial bool   `yaml:"initial"`
-		Type    string `yaml:"type"`
 		Link    string `yaml:"link"`
 	} `yaml:"database"`
+	Redis struct {
+		Host     string `yaml:"host"`
+		Port     uint16 `yaml:"port"`
+		Password string `yaml:"password"`
+	}
 }
 
 var Conf *Config
