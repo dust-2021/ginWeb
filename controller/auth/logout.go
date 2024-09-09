@@ -13,7 +13,7 @@ type Logout struct {
 
 func (receiver Logout) V1(c *gin.Context) {
 	tokenC, f := c.Get("token")
-	token, ok := tokenC.(auth.Token)
+	token, ok := tokenC.(*auth.Token)
 
 	// 拉黑该token
 	if f && ok {

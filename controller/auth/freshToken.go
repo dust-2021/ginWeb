@@ -19,7 +19,7 @@ func (receiver FreshToken) V1(c *gin.Context) {
 		})
 		return
 	}
-	token, f := tokenStr.(auth.Token)
+	token, f := tokenStr.(*auth.Token)
 	if !f {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code: 1, Message: "valid token",

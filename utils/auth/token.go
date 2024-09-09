@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// 字符串"{"alg": "hmac", "type": "jwt"}"的b64编码
+// 字符串"{"alg": "hmac", "type": "jwt"}"的b64编码，作为JWT的header
 const jwtHeader string = "eyJhbGciOiAiaG1hYyIsICJ0eXBlIjogImp3dCJ9"
 
 type Token struct {
@@ -53,7 +53,7 @@ func (receiver Token) Sign() (token string, err error) {
 }
 
 // checkSign 验证token并返回Token对象
-func checkSign(t string) (token Token, err error) {
+func checkSign(t string) (token *Token, err error) {
 	tokenChars := strings.Split(t, ".")
 	if len(tokenChars) != 3 {
 		err = errors.New("token format error")
@@ -132,7 +132,7 @@ func (receiver Token) AesEncrypt() (token string, err error) {
 }
 
 // 解密token数据
-func aesDecrypt(tokenText string) (token Token, err error) {
+func aesDecrypt(tokenText string) (token *Token, err error) {
 	data, err := base64.StdEncoding.DecodeString(tokenText)
 	if err != nil {
 		return
@@ -163,7 +163,7 @@ func aesDecrypt(tokenText string) (token Token, err error) {
 	return
 }
 
-func CheckToken(tokenText string) (token Token, err error) {
+func CheckToken(tokenText string) (token *Token, err error) {
 	if config.Conf.Server.TokenEncrypt {
 		token, err = aesDecrypt(tokenText)
 	} else {
