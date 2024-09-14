@@ -17,7 +17,7 @@ func (s LoginStatus) Handle(c *gin.Context) {
 	tokenStr := c.GetHeader("Token")
 	if tokenStr == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, dataType.JsonWrong{
-			Code: 1, Message: "valid token",
+			Code: 1, Message: "invalid token",
 		})
 		return
 	}
@@ -25,7 +25,7 @@ func (s LoginStatus) Handle(c *gin.Context) {
 	_, err := reCache.Get("blackToken", tokenStr)
 	if err == nil {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: 1, Message: "valid token",
+			Code: 1, Message: "invalid token",
 		})
 		return
 	}

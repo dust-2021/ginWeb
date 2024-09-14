@@ -1,6 +1,7 @@
 package route
 
 import (
+	"ginWeb/controller/trade"
 	"ginWeb/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -16,5 +17,9 @@ func InitRoute(g *gin.Engine) error {
 	sapi.Use(middleware.LoginStatus{}.Handle)
 	controller.Logout{}.RegisterRoute("/logout", sapi)
 	controller.FreshToken{}.RegisterRoute("/freshToken", sapi)
+
+	tradeApi := sapi.Group("/trade")
+
+	trade.Account{}.RegisterRoute("/account", tradeApi)
 	return nil
 }

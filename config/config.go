@@ -28,6 +28,9 @@ type Config struct {
 		Port     uint16 `yaml:"port"`
 		Password string `yaml:"password"`
 	}
+	Exchange struct {
+		Proxy string `yaml:"proxy"`
+	}
 }
 
 var Conf *Config
@@ -35,7 +38,7 @@ var Conf *Config
 func init() {
 	data, err := os.ReadFile("./config.yaml")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("load config failed: %s", err.Error())
 	}
 	err = yaml.Unmarshal(data, &Conf)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Set TODO 缓存结果解析
 func Set(namespace string, key string, value interface{}, ex uint) error {
 	if ex == 0 {
 		return errors.New("cache expired must be positive")

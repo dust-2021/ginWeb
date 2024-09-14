@@ -14,8 +14,9 @@ type MyFormatter struct {
 }
 
 func (f *MyFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	logMessage := fmt.Sprintf("[%s] | %s\n",
+	logMessage := fmt.Sprintf("[%-7s] | [%s] | %s\n",
 		strings.ToUpper(entry.Level.String()),
+		entry.Time.Format("2006-01-02 15:04:05.00"),
 		entry.Message)
 	return []byte(logMessage), nil
 }
@@ -25,7 +26,7 @@ func init() {
 		"panic": 0, "fatal": 1, "error": 2, "warn": 3, "info": 4, "debug": 5, "trace": 6,
 	}
 	var level uint32
-	level, f := levelMap[config.Conf.Server.Logger.Level]
+	level, f := levelMap[strings.ToLower(config.Conf.Server.Logger.Level)]
 	if !f {
 		level = 4
 	}
@@ -45,5 +46,5 @@ func init() {
 		Hooks:     make(logrus.LevelHooks),
 		Level:     logrus.Level(level),
 	}
-	Logu.Info("logrus configurate as %s", logrus.Level(level))
+	Logu.Infof("logrus configurate as %s", logrus.Level(level))
 }

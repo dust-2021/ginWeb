@@ -32,7 +32,7 @@ func (receiver Login) V1(c *gin.Context) {
 	pwd, err := auth.HashPassword(j.Password)
 	if result.Error != nil || err != nil || pwd != u.PasswordHash {
 		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{Code: 1,
-			Message: "username or password valid"})
+			Message: "username or password invalid"})
 		return
 	}
 	// 查询权限

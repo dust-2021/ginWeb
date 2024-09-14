@@ -9,12 +9,6 @@ type ExInterface interface {
 	SetResult([]byte, error)
 }
 
-// ExResp 接口请求结果
-type ExResp struct {
-	Data  interface{}
-	Error error
-}
-
 // Exchange 交易所类
 type Exchange interface {
 	// Request 同步请求

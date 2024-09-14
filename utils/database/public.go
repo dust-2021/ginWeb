@@ -6,6 +6,7 @@ import (
 	"ginWeb/config"
 	"ginWeb/utils/loguru"
 	"github.com/go-redis/redis/v8"
+	"github.com/sirupsen/logrus"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -14,12 +15,44 @@ import (
 	"time"
 )
 
+type LogrusLogger struct {
+	Logger *logrus.Logger
+}
+
+func (l *LogrusLogger) LogMode(level logger.LogLevel) logger.Interface {
+	return l
+}
+
+func (l *LogrusLogger) Info(ctx context.Context, msg string, args ...interface{}) {
+	l.Logger.Infof(msg, args...)
+}
+
+func (l *LogrusLogger) Warn(ctx context.Context, msg string, args ...interface{}) {
+	l.Logger.Warnf(msg, args...)
+}
+
+func (l *LogrusLogger) Error(ctx context.Context, msg string, args ...interface{}) {
+	l.Logger.Errorf(msg, args...)
+}
+
+func (l *LogrusLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	if err != nil {
+		l.Logger.Errorf("Error: %v", err)
+	}
+	sql, _ := fc()
+	l.Logger.Infof("SQL: %s", sql)
+}
+
 var Db *gorm.DB
 var Rdb *redis.Client
 
 func init() {
+	logu := &LogrusLogger{
+		Logger: loguru.Logu,
+	}
 	db, err := gorm.Open(mysql.Open(config.Conf.Database.Link), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logu,
+		// 关闭复数形式表名
 		NamingStrategy: schema.NamingStrategy{
 			SingularTable: true,
 		},
@@ -34,7 +67,7 @@ func init() {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	if err := sqlDB.Ping(); err != nil {
-		loguru.Logu.Info("Failed to ping database: %s", err.Error())
+		loguru.Logu.Infof("Failed to ping database: %s", err.Error())
 	} else {
 		loguru.Logu.Info("Successfully connected to the database")
 	}
@@ -46,7 +79,7 @@ func init() {
 	})
 	resp := rdb.Ping(context.Background())
 	if err := resp.Err(); err != nil {
-		loguru.Logu.Error("Failed to ping redis: %s", err.Error())
+		loguru.Logu.Errorf("Failed to ping redis: %s", err.Error())
 	} else {
 		loguru.Logu.Info("Successfully connected to redis")
 	}

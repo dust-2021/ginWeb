@@ -19,7 +19,21 @@ func application() *gin.Engine {
 	}
 	g := gin.New()
 	g.Use(gin.Recovery())
-	g.Use(gin.LoggerWithWriter(loguru.Logu.Writer()))
+
+	ginLogConf := gin.LoggerConfig{
+		Output: loguru.Logu.Writer(),
+		Formatter: func(param gin.LogFormatterParams) string {
+			return fmt.Sprintf("[GIN] | %3d | %13v | %15s | %-7s %#v\n%s",
+				param.StatusCode,
+				param.Latency,
+				param.ClientIP,
+				param.Method,
+				param.Path,
+				param.ErrorMessage,
+			)
+		},
+	}
+	g.Use(gin.LoggerWithConfig(ginLogConf))
 	// 注册路由
 	_ = route.InitRoute(g)
 	return g

@@ -15,14 +15,14 @@ func (receiver FreshToken) V1(c *gin.Context) {
 	tokenStr, f := c.Get("token")
 	if !f {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "valid token",
+			Code: 1, Message: "invalid token",
 		})
 		return
 	}
 	token, f := tokenStr.(*auth.Token)
 	if !f {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "valid token",
+			Code: 1, Message: "invalid token",
 		})
 		return
 	}
@@ -31,7 +31,7 @@ func (receiver FreshToken) V1(c *gin.Context) {
 	s, err := token.Sign()
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "valid token",
+			Code: 1, Message: "invalid token",
 		})
 		return
 	}

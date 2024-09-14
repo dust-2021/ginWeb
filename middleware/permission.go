@@ -7,7 +7,7 @@ import (
 )
 
 type Permission struct {
-	permission []string
+	Permission []string
 }
 
 func containsAll(a, b []string) bool {
@@ -26,27 +26,27 @@ func containsAll(a, b []string) bool {
 }
 
 func (p Permission) Handle(c *gin.Context) {
-	if len(p.permission) == 0 {
+	if len(p.Permission) == 0 {
 		c.Next()
 		return
 	}
-	tokenStr, f := c.Get("token")
+	tokenPtr, f := c.Get("token")
 	if !f {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: 1, Message: "without token",
 		})
 		return
 	}
-	token, flag := tokenStr.(auth.Token)
+	token, flag := tokenPtr.(*auth.Token)
 	if !flag {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: 1, Message: "without token",
 		})
 		return
 	}
-	if !containsAll(token.Permission, p.permission) {
+	if !containsAll(token.Permission, p.Permission) {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: 1, Message: "permission don't match",
+			Code: 1, Message: "Permission don't match",
 		})
 	}
 
