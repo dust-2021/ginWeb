@@ -24,6 +24,9 @@ func (receiver Login) V1(c *gin.Context) {
 	var j postData
 	err := c.BindJSON(&j)
 	if err != nil {
+		c.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: 1, Message: err.Error(),
+		})
 		return
 	}
 	// 查找用户

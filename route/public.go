@@ -7,6 +7,7 @@ import (
 )
 import "ginWeb/controller/auth"
 
+// InitRoute 注册路由函数
 func InitRoute(g *gin.Engine) error {
 
 	api := g.Group("/api")

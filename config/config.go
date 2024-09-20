@@ -46,4 +46,9 @@ func init() {
 		log.Fatalf("load config failed: %s", err.Error())
 	}
 
+	// 使用aes加密token时限制secret长度
+	secretSize := len(Conf.Server.Secret)
+	if Conf.Server.TokenEncrypt && !(secretSize == 32 || secretSize == 24 || secretSize == 16) {
+		log.Fatal("secret key length must be between 32 and 24 and 16 while using token encrypt mode.")
+	}
 }

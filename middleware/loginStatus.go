@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-// LoginStatus token验证中间件，验证token是否正确、是否过期、是否已注销
+// LoginStatus token验证中间件，验证token是否正确、是否过期、是否已注销，并将token指针放入请求上下文中
 type LoginStatus struct {
 	Redirect bool
 }

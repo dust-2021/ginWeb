@@ -163,6 +163,7 @@ func aesDecrypt(tokenText string) (token *Token, err error) {
 	return
 }
 
+// CheckToken 检测token是否有效
 func CheckToken(tokenText string) (token *Token, err error) {
 	if config.Conf.Server.TokenEncrypt {
 		token, err = aesDecrypt(tokenText)
