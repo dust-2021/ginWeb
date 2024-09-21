@@ -14,12 +14,14 @@ type TradeType uint8
 
 type TradeStrategy uint8
 
+// 持仓方向
 const (
 	Both PositionType = iota
 	Short
 	Long
 )
 
+// 划转类型
 const (
 	MainFuture TransferType = iota
 	FutureMain
@@ -29,18 +31,22 @@ const (
 	BalanceFuture
 )
 
+// 交易方向
 const (
 	BUY TradeSide = iota
 	SELL
 )
 
+// 交易方式
 const (
 	MARKET TradeType = iota
 	LIMIT
 )
 
+// 交易策略
 const (
 	GTC TradeStrategy = iota
+	OTC
 )
 
 func (receiver PositionType) String() string {

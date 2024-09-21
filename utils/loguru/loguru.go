@@ -16,7 +16,7 @@ type MyFormatter struct {
 func (f *MyFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	logMessage := fmt.Sprintf("[%-7s] | [%s] | %s\n",
 		strings.ToUpper(entry.Level.String()),
-		entry.Time.Format("2006-01-02 15:04:05.00"),
+		entry.Time.Format("2006-01-02 15:04:05.0000"),
 		entry.Message)
 	return []byte(logMessage), nil
 }

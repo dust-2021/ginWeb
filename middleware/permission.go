@@ -15,7 +15,12 @@ type Permission struct {
 }
 
 func containsAll(a, b []string) bool {
-
+	if len(b) == 0 {
+		return true
+	}
+	if len(a) == 0 {
+		return false
+	}
 	elementMap := make(map[string]struct{})
 	for _, v := range a {
 		elementMap[v] = struct{}{}
@@ -30,6 +35,12 @@ func containsAll(a, b []string) bool {
 }
 
 func containOne(a []string, b [][]string) bool {
+	if len(b) == 0 {
+		return true
+	}
+	if len(a) == 0 {
+		return false
+	}
 	elementMap := make(map[string]struct{})
 	for _, v := range a {
 		elementMap[v] = struct{}{}
@@ -42,6 +53,7 @@ func containOne(a []string, b [][]string) bool {
 				break
 			}
 		}
+		// 某个多选一未通过
 		if !flag {
 			return false
 		}
@@ -68,7 +80,7 @@ func (p Permission) Handle(c *gin.Context) {
 		})
 		return
 	}
-	if !containsAll(token.Permission, p.Permission) || !containOne(token.Permission, p.SelectPermission) {
+	if !(containsAll(token.Permission, p.Permission) && containOne(token.Permission, p.SelectPermission)) {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: 1, Message: "Permission don't match",
 		})

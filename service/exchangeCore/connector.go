@@ -1,33 +1,30 @@
 package exchangeCore
 
 import (
-	"fmt"
+	reCache "ginWeb/service/cache"
+	"ginWeb/utils/loguru"
 	"github.com/robfig/cron/v3"
-	"sync"
 	"time"
 )
 
-var scheduler *cron.Cron
-
-var priceLock sync.RWMutex
+var ExchangeSche *cron.Cron
 
 func GetSymbolPrice() {
-	priceLock.RLock()
-	defer priceLock.RUnlock()
 	ticker := time.NewTicker(200 * time.Millisecond)
+	loguru.Logu.Infof("getting price")
 	for i := 0; i < 5; i++ {
 		select {
 		case <-ticker.C:
-			fmt.Printf("\r %s 任务触发", time.Now().Format("2006-01-02 15:04:05"))
+			err := reCache.Set("exchange", "price", 0, 60)
+			if err != nil {
+				loguru.Logu.Errorf("get price failed")
+			}
 		}
 	}
 	ticker.Stop()
 }
 
 func init() {
-	scheduler = cron.New(cron.WithSeconds())
-	_, err := scheduler.AddFunc("* * * * * *", GetSymbolPrice)
-	if err != nil {
-		return
-	}
+	ExchangeSche = cron.New(cron.WithSeconds())
+	_, _ = ExchangeSche.AddFunc("* * * * * *", GetSymbolPrice)
 }

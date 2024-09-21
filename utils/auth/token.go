@@ -20,6 +20,26 @@ import (
 // 字符串"{"alg": "hmac", "type": "jwt"}"的b64编码，作为JWT的header
 const jwtHeader string = "eyJhbGciOiAiaG1hYyIsICJ0eXBlIjogImp3dCJ9"
 
+// 去除扩展数据
+func pkcs7UnPadding(data []byte) ([]byte, error) {
+	length := len(data)
+	if length == 0 {
+		return nil, errors.New("数据长度错误")
+	}
+	padding := int(data[length-1])
+	if padding > length || padding > aes.BlockSize {
+		return nil, errors.New("无效扩展长度")
+	}
+	return data[:length-padding], nil
+}
+
+// 将数据扩展至固定长度
+func pkcs7Padding(ciphertext []byte, blockSize int) []byte {
+	padding := blockSize - len(ciphertext)%blockSize
+	paddingText := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(ciphertext, paddingText...)
+}
+
 type Token struct {
 	UserId     int64                  `json:"userId"`
 	UserUUID   string                 `json:"userUUID"`
@@ -29,7 +49,7 @@ type Token struct {
 }
 
 // Sign 使用hmac生成Token
-func (receiver Token) Sign() (token string, err error) {
+func (receiver *Token) Sign() (token string, err error) {
 	data, err := json.Marshal(receiver)
 	if err != nil {
 		return
@@ -41,7 +61,6 @@ func (receiver Token) Sign() (token string, err error) {
 
 	h := hmac.New(sha256.New, []byte(config.Conf.Server.Secret))
 
-	// 写入要进行加密的数据
 	h.Write(data)
 
 	// 计算 HMAC 值
@@ -81,28 +100,8 @@ func checkSign(t string) (token *Token, err error) {
 	return
 }
 
-// 去除扩展数据
-func pkcs7UnPadding(data []byte) ([]byte, error) {
-	length := len(data)
-	if length == 0 {
-		return nil, errors.New("数据长度错误")
-	}
-	padding := int(data[length-1])
-	if padding > length || padding > aes.BlockSize {
-		return nil, errors.New("无效扩展长度")
-	}
-	return data[:length-padding], nil
-}
-
-// 将数据扩展至固定长度
-func pkcs7Padding(ciphertext []byte, blockSize int) []byte {
-	padding := blockSize - len(ciphertext)%blockSize
-	paddingText := bytes.Repeat([]byte{byte(padding)}, padding)
-	return append(ciphertext, paddingText...)
-}
-
 // AesEncrypt 生成aes加密密文
-func (receiver Token) AesEncrypt() (token string, err error) {
+func (receiver *Token) AesEncrypt() (token string, err error) {
 	// 使用json数据加密
 	data, err := json.Marshal(receiver)
 	if len(data) > config.Conf.Server.TokenSize {
@@ -174,6 +173,7 @@ func CheckToken(tokenText string) (token *Token, err error) {
 	if err != nil {
 		return
 	}
+	// 验证时间
 	if time.Now().After(token.Expire) {
 		return token, errors.New("token expired")
 	}

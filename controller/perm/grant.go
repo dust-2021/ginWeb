@@ -67,9 +67,58 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 	})
 }
 
-func (g Grant) GroupToUser(ctx *gin.Context) {}
+func (g Grant) GroupToUser(ctx *gin.Context) {
+	var data data
+	err := ctx.ShouldBindJSON(&data)
+	if err != nil {
+		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: 1, Message: err.Error(),
+		})
+		return
+	}
+	var existed permissionMode.UserGroup
+	database.Db.Where("group_id = ? and user_id = ?", data.GrantId, data.ToId).First(&existed)
+	if existed.Id != 0 {
+		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: 0, Message: "already existed",
+		})
+		return
+	}
+	var group permissionMode.Group
+	var user systemMode.User
+	resp := database.Db.Where("id = ?", data.GrantId).First(&group)
+	if resp.Error != nil {
+		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: 1, Message: "invalid group",
+		})
+		return
+	}
+	resp = database.Db.Where("id = ?", data.ToId).First(&user)
+	if resp.Error != nil {
+		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: 1, Message: "invalid user",
+		})
+		return
+	}
+	resp = database.Db.Create(&permissionMode.UserGroup{
+		UserId:  data.ToId,
+		GroupId: data.GrantId,
+	})
+	if resp.Error != nil {
+		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: 1, Message: "failed: " + resp.Error.Error(),
+		})
+		return
+	}
+	ctx.JSON(200, dataType.JsonRes{
+		Data: "success",
+	})
+}
 
 func (g Grant) RegisterRoute(r string, router *gin.RouterGroup) {
-	router.Handle("POST", r+"/roleToUser", middleware.Permission{Permission: []string{"admin"}}.Handle, g.RoleToUser)
-	router.Handle("POST", r+"/groupToUser", g.GroupToUser)
+	granter := router.Group(r)
+
+	granter.Use(middleware.Permission{Permission: []string{"admin"}}.Handle)
+	granter.Handle("POST", "/roleToUser", g.RoleToUser)
+	granter.Handle("POST", "/groupToUser", g.GroupToUser)
 }

@@ -24,23 +24,23 @@ func (l *LogrusLogger) LogMode(level logger.LogLevel) logger.Interface {
 }
 
 func (l *LogrusLogger) Info(ctx context.Context, msg string, args ...interface{}) {
-	l.Logger.Infof(msg, args...)
+	l.Logger.Infof("[GORM] | "+msg, args...)
 }
 
 func (l *LogrusLogger) Warn(ctx context.Context, msg string, args ...interface{}) {
-	l.Logger.Warnf(msg, args...)
+	l.Logger.Warnf("[GORM] | "+msg, args...)
 }
 
 func (l *LogrusLogger) Error(ctx context.Context, msg string, args ...interface{}) {
-	l.Logger.Errorf(msg, args...)
+	l.Logger.Errorf("[GORM] | "+msg, args...)
 }
 
 func (l *LogrusLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	if err != nil {
-		l.Logger.Errorf("Error: %v", err)
+		l.Logger.Errorf("[GORM] | Error: %v", err)
 	}
 	sql, _ := fc()
-	l.Logger.Infof("SQL: %s", sql)
+	l.Logger.Infof("[GORM] | SQL: %s", sql)
 }
 
 var Db *gorm.DB

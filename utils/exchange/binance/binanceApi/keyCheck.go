@@ -6,6 +6,7 @@ import (
 	"ginWeb/utils/exchange/binance"
 )
 
+// KeyCheck 检查key权限
 type KeyCheck struct {
 	Data   map[string]interface{}
 	result struct {
@@ -20,34 +21,34 @@ type data struct {
 	PermitsUniversalTransfer   bool `json:"permitsUniversalTransfer"`
 }
 
-func (receiver *KeyCheck) Route() string {
+func (k *KeyCheck) Route() string {
 	return binance.Spot + "/sapi/v1/account/apiRestrictions"
 }
 
-func (receiver *KeyCheck) Method() string {
+func (k *KeyCheck) Method() string {
 	return "GET"
 }
 
-func (receiver *KeyCheck) Sign() bool {
+func (k *KeyCheck) Sign() bool {
 	return true
 }
 
-func (receiver *KeyCheck) ReqData() map[string]interface{} {
-	return receiver.Data
+func (k *KeyCheck) ReqData() map[string]interface{} {
+	return k.Data
 }
 
-func (receiver *KeyCheck) SetResult(resp []byte, err error) {
-	receiver.result.Data = resp
-	receiver.result.Error = err
+func (k *KeyCheck) SetResult(resp []byte, err error) {
+	k.result.Data = resp
+	k.result.Error = err
 }
 
-func (receiver *KeyCheck) GetResult() (bool, error) {
+func (k *KeyCheck) GetResult() (bool, error) {
 
-	if receiver.result.Error != nil {
-		return false, receiver.result.Error
+	if k.result.Error != nil {
+		return false, k.result.Error
 	}
 	var data data
-	err := json.Unmarshal(receiver.result.Data, &data)
+	err := json.Unmarshal(k.result.Data, &data)
 	if err != nil {
 		return false, err
 	}
