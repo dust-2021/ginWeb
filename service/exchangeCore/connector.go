@@ -2,12 +2,10 @@ package exchangeCore
 
 import (
 	reCache "ginWeb/service/cache"
+	"ginWeb/service/scheduler"
 	"ginWeb/utils/loguru"
-	"github.com/robfig/cron/v3"
 	"time"
 )
-
-var ExchangeSche *cron.Cron
 
 func GetSymbolPrice() {
 	ticker := time.NewTicker(200 * time.Millisecond)
@@ -25,6 +23,8 @@ func GetSymbolPrice() {
 }
 
 func init() {
-	ExchangeSche = cron.New(cron.WithSeconds())
-	_, _ = ExchangeSche.AddFunc("* * * * * *", GetSymbolPrice)
+	_, err := scheduler.ScheduleApp.AddFunc("* * * * * *", GetSymbolPrice)
+	if err != nil {
+		loguru.Logu.Fatal(err)
+	}
 }

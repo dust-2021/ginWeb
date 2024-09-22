@@ -61,7 +61,7 @@ func containOne(a []string, b [][]string) bool {
 	return true
 }
 
-func (p Permission) Handle(c *gin.Context) {
+func (p *Permission) Handle(c *gin.Context) {
 	if len(p.Permission) == 0 {
 		c.Next()
 		return

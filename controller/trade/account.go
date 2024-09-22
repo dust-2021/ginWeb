@@ -52,5 +52,5 @@ func (a Account) AddV1(c *gin.Context) {
 }
 
 func (a Account) RegisterRoute(r string, g *gin.RouterGroup) {
-	g.Handle("POST", r, middleware.Permission{Permission: []string{"addUser"}}.Handle, a.AddV1)
+	g.Handle("POST", r, (&middleware.Permission{Permission: []string{"addUser"}}).Handle, a.AddV1)
 }

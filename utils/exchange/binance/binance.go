@@ -29,7 +29,7 @@ type Binance struct {
 }
 
 // Sign 生成签名
-func (receiver Binance) Sign(msg string) (string, error) {
+func (receiver *Binance) Sign(msg string) (string, error) {
 	if receiver.Secret == "" || receiver.ApiKey == "" {
 		err := errors.New("secret or binanceApi key is empty")
 		return "", err
@@ -40,7 +40,7 @@ func (receiver Binance) Sign(msg string) (string, error) {
 }
 
 // 将请求参数格式化为url参数并设置签名
-func (receiver Binance) urlFormatter(data map[string]interface{}, sign bool) (string, error) {
+func (receiver *Binance) urlFormatter(data map[string]interface{}, sign bool) (string, error) {
 	if data == nil {
 		data = make(map[string]interface{})
 	}
@@ -68,11 +68,14 @@ func (receiver Binance) urlFormatter(data map[string]interface{}, sign bool) (st
 		}
 		result += "&signature=" + signature
 	}
-	return "?" + result, nil
+	if len(result) != 0 {
+		result = "?" + result
+	}
+	return result, nil
 }
 
 // Request 同步请求
-func (receiver Binance) Request(item exchange.ExInterface) {
+func (receiver *Binance) Request(item exchange.ExInterface) {
 	// 签名请求参数
 	urlParam, err := receiver.urlFormatter(item.ReqData(), item.Sign())
 	if err != nil {
@@ -125,11 +128,11 @@ func (receiver Binance) Request(item exchange.ExInterface) {
 	}
 
 	item.SetResult(data, nil)
-	loguru.Logu.Info("request binance %s success", totalUrl)
+	loguru.Logu.Infof("request binance %s success", totalUrl)
 	return
 }
 
-func (receiver Binance) AsyncRequests(reqs ...exchange.ExInterface) error {
+func (receiver *Binance) AsyncRequests(reqs ...exchange.ExInterface) error {
 	if len(reqs) == 0 {
 		return errors.New("reqs is empty")
 	}
@@ -153,7 +156,7 @@ func (receiver Binance) AsyncRequests(reqs ...exchange.ExInterface) error {
 	return nil
 }
 
-func (receiver Binance) SyncRequests(reqs ...exchange.ExInterface) error {
+func (receiver *Binance) SyncRequests(reqs ...exchange.ExInterface) error {
 	if len(reqs) == 0 {
 		return errors.New("reqs is empty")
 	}

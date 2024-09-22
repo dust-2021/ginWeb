@@ -13,7 +13,7 @@ type LoginStatus struct {
 	Redirect bool
 }
 
-func (s LoginStatus) Handle(c *gin.Context) {
+func (s *LoginStatus) Handle(c *gin.Context) {
 	tokenStr := c.GetHeader("Token")
 	if tokenStr == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, dataType.JsonWrong{

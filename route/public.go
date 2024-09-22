@@ -18,7 +18,7 @@ func InitRoute(g *gin.Engine) error {
 
 	// 带token验证的api组
 	sapi := g.Group("/sapi")
-	sapi.Use(middleware.LoginStatus{}.Handle)
+	sapi.Use((&middleware.LoginStatus{}).Handle)
 	controller.Logout{}.RegisterRoute("/logout", sapi)
 	controller.FreshToken{}.RegisterRoute("/freshToken", sapi)
 

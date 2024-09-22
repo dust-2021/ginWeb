@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ginWeb/config"
 	"ginWeb/model/inital"
+	"ginWeb/service/scheduler"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 )
@@ -41,5 +42,6 @@ func application() *gin.Engine {
 
 func main() {
 	g := application()
+	scheduler.ScheduleApp.Start()
 	_ = g.Run(fmt.Sprintf(":%d", config.Conf.Server.Port))
 }
