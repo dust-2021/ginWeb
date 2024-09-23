@@ -18,6 +18,11 @@ type Config struct {
 			Path  string `yaml:"path"`  // 日志文件位置
 			Level string `yaml:"level"` // 日志等级
 		}
+		AdminUser struct {
+			Phone    string `yaml:"phone"`
+			Email    string `yaml:"email"`
+			Password string `yaml:"password"`
+		} `yaml:"adminUser"`
 	} `yaml:"server"`
 	Database struct {
 		Initial bool   `yaml:"initial"` // 是否生成表

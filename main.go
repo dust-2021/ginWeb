@@ -42,6 +42,7 @@ func application() *gin.Engine {
 
 func main() {
 	g := application()
+	// 启动定时器
 	scheduler.ScheduleApp.Start()
 	_ = g.Run(fmt.Sprintf(":%d", config.Conf.Server.Port))
 }
