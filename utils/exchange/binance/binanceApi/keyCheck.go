@@ -15,7 +15,7 @@ type KeyCheck struct {
 	}
 }
 
-type data struct {
+type keyCheckResp struct {
 	EnableFutures              bool `json:"enableFutures"`
 	EnableSpotAndMarginTrading bool `json:"enableSpotAndMarginTrading"`
 	PermitsUniversalTransfer   bool `json:"permitsUniversalTransfer"`
@@ -47,7 +47,7 @@ func (k *KeyCheck) GetResult() (bool, error) {
 	if k.result.Error != nil {
 		return false, k.result.Error
 	}
-	var data data
+	var data keyCheckResp
 	err := json.Unmarshal(k.result.Data, &data)
 	if err != nil {
 		return false, err

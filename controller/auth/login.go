@@ -70,5 +70,6 @@ func (receiver Login) V1(c *gin.Context) {
 }
 
 func (receiver Login) RegisterRoute(r string, g *gin.RouterGroup) {
-	g.Handle("POST", r, middleware.NewRouteLimiter(5, 0, 0).Handle, receiver.V1)
+	// 添加独立限流器
+	g.Handle("POST", r, middleware.NewRollingIndependentLimiter(100, 1000).Handle, receiver.V1)
 }

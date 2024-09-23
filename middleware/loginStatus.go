@@ -8,12 +8,11 @@ import (
 	"net/http"
 )
 
-// LoginStatus token验证中间件，验证token是否正确、是否过期、是否已注销，并将token指针放入请求上下文中
-type LoginStatus struct {
+type loginStatus struct {
 	Redirect bool
 }
 
-func (s *LoginStatus) Handle(c *gin.Context) {
+func (s *loginStatus) Handle(c *gin.Context) {
 	tokenStr := c.GetHeader("Token")
 	if tokenStr == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, dataType.JsonWrong{
@@ -38,4 +37,9 @@ func (s *LoginStatus) Handle(c *gin.Context) {
 		return
 	}
 	c.Set("token", token)
+}
+
+// NewLoginStatus token验证中间件，验证token是否正确、是否过期、是否已注销，并将token指针放入请求上下文中
+func NewLoginStatus() Middleware {
+	return &loginStatus{}
 }

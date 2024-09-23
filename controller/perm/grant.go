@@ -118,7 +118,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 func (g Grant) RegisterRoute(r string, router *gin.RouterGroup) {
 	granter := router.Group(r)
 
-	granter.Use((&middleware.Permission{Permission: []string{"admin"}}).Handle)
+	granter.Use(middleware.NewPermission([]string{"admin"}).Handle)
 	granter.Handle("POST", "/roleToUser", g.RoleToUser)
 	granter.Handle("POST", "/groupToUser", g.GroupToUser)
 }

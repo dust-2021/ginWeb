@@ -6,24 +6,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type ScheController struct {
+type TaskController struct {
 }
 
-func (s ScheController) Start(c *gin.Context) {
+func (s TaskController) Start(c *gin.Context) {
 	//exchangeCore.ExchangeSche.Start()
 	c.JSON(200, dataType.JsonRes{
 		Code: 0, Data: "success",
 	})
 }
-func (s ScheController) Stop(c *gin.Context) {
+func (s TaskController) Stop(c *gin.Context) {
 	//exchangeCore.ExchangeSche.Stop()
 	c.JSON(200, dataType.JsonRes{
 		Code: 0, Data: "success",
 	})
 }
 
-func (s ScheController) RegisterRoute(r string, g *gin.RouterGroup) {
-	g.Use((&middleware.Permission{SelectPermission: [][]string{{"admin", "exchangeAdmin"}}}).Handle)
+func (s TaskController) RegisterRoute(r string, g *gin.RouterGroup) {
+	g.Use(middleware.NewPermission([]string{}, []string{"admin", "exchangeAdmin"}).Handle)
 	g.Handle("GET", r+"/start", s.Start)
 	g.Handle("GET", r+"/stop", s.Stop)
 }

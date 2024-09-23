@@ -6,8 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Permission 对比token中存储的权限是否足够
-type Permission struct {
+type permission struct {
 	// 必要权限
 	Permission []string
 	// 可选权限，只用包含每个子数组中的一个
@@ -61,7 +60,7 @@ func containOne(a []string, b [][]string) bool {
 	return true
 }
 
-func (p *Permission) Handle(c *gin.Context) {
+func (p *permission) Handle(c *gin.Context) {
 	if len(p.Permission) == 0 {
 		c.Next()
 		return
@@ -82,8 +81,17 @@ func (p *Permission) Handle(c *gin.Context) {
 	}
 	if !(containsAll(token.Permission, p.Permission) && containOne(token.Permission, p.SelectPermission)) {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: 1, Message: "Permission don't match",
+			Code: 1, Message: "permission don't match",
 		})
 	}
 
+}
+
+// NewPermission 对比token中存储的权限是否足够，需要前置loginStatus中间件
+func NewPermission(perms []string, choice ...[]string) Middleware {
+	per := &permission{
+		Permission:       perms,
+		SelectPermission: choice,
+	}
+	return per
 }

@@ -146,6 +146,7 @@ func (receiver *Binance) AsyncRequests(reqs ...exchange.ExInterface) error {
 
 	for _, req := range reqs {
 		wg.Add(1)
+		req := req
 		go func() {
 			defer wg.Done()
 			receiver.Request(req)

@@ -7,40 +7,39 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// SpotPrice 现货价格
-type SpotPrice struct {
+type SwapPrice struct {
 	Data   map[string]interface{}
 	result struct {
-		Data  []byte
-		Error error
+		Data []byte
+		Err  error
 	}
 }
 
-type spotPriceResp []map[string]interface{}
+type swapPriceResp []map[string]interface{}
 
-func (s *SpotPrice) Route() string {
-	return binance.Spot + "/api/v3/ticker/price"
+func (s *SwapPrice) Route() string {
+	return binance.Swap + "/fapi/v1/ticker/price"
 }
 
-func (s *SpotPrice) Method() string {
+func (s *SwapPrice) Method() string {
 	return "GET"
 }
 
-func (s *SpotPrice) Sign() bool {
+func (s *SwapPrice) Sign() bool {
 	return false
 }
 
-func (s *SpotPrice) ReqData() map[string]interface{} {
+func (s *SwapPrice) ReqData() map[string]interface{} {
 	return s.Data
 }
 
-func (s *SpotPrice) SetResult(resp []byte, err error) {
+func (s *SwapPrice) SetResult(resp []byte, err error) {
 	s.result.Data = resp
-	s.result.Error = err
+	s.result.Err = err
 }
 
-func (s *SpotPrice) GetResult() (map[string]decimal.Decimal, error) {
-	var resp spotPriceResp
+func (s *SwapPrice) GetResult() (map[string]decimal.Decimal, error) {
+	var resp swapPriceResp
 	err := json.Unmarshal(s.result.Data, &resp)
 	if err != nil {
 		return nil, err
