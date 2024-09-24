@@ -4,6 +4,7 @@ import (
 	"ginWeb/controller/perm"
 	"ginWeb/controller/trade"
 	"ginWeb/controller/trade/spot"
+	"ginWeb/controller/wes"
 	"ginWeb/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -11,6 +12,8 @@ import "ginWeb/controller/auth"
 
 // InitRoute 注册路由函数
 func InitRoute(g *gin.Engine) error {
+	// websocket
+	g.Handle("GET", "/wes", middleware.NewLoginStatus().Handle, wes.UpgradeConn)
 
 	// 开放api组
 	api := g.Group("/api")
