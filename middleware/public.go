@@ -20,13 +20,13 @@ var limiterContainer *[]Limiter
 func init() {
 	// 添加限流器reset的定时任务
 	limiterContainer = &[]Limiter{}
-	_, err := scheduler.ScheduleApp.AddFunc("0 * * * * *", func() {
-		loguru.Logu.Debug("limiter minute period resetting.")
+	_, err := scheduler.App.AddFunc("0 * * * * *", func() {
+		loguru.Logger.Debug("limiter minute period resetting.")
 		for _, v := range *limiterContainer {
 			go v.Reset(MinuteP)
 		}
 	})
 	if err != nil {
-		loguru.Logu.Fatal(err)
+		loguru.Logger.Fatal(err)
 	}
 }

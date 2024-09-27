@@ -8,7 +8,8 @@ import (
 	"strings"
 )
 
-var Logu *logrus.Logger
+var Logger *logrus.Logger
+var DbLogger *logrus.Logger
 
 type MyFormatter struct {
 }
@@ -34,17 +35,32 @@ func init() {
 	if config.Conf.Server.Debug {
 		file = os.Stdout
 	} else {
-		f, err := os.OpenFile("./loguru.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"server.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		file = f
 		if err != nil {
 			panic(err)
 		}
 	}
-	Logu = &logrus.Logger{
+	Logger = &logrus.Logger{
 		Out:       file,
 		Formatter: &MyFormatter{},
 		Hooks:     make(logrus.LevelHooks),
 		Level:     logrus.Level(level),
 	}
-	Logu.Infof("logrus configurate as %s", logrus.Level(level))
+	// 非调试下gorm日志放入不同文件
+	if config.Conf.Server.Debug {
+		DbLogger = Logger
+	} else {
+		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"db.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			panic(err)
+		}
+		DbLogger = &logrus.Logger{
+			Out:       f,
+			Formatter: &MyFormatter{},
+			Hooks:     make(logrus.LevelHooks),
+			Level:     logrus.Level(level),
+		}
+	}
+	Logger.Infof("logrus configurate as %s", logrus.Level(level))
 }

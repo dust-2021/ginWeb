@@ -40,7 +40,7 @@ func (r *independentLimiter) Reset(p PeriodType) {
 		atomic.StoreUint32(&r.hour, 0)
 		atomic.StoreUint32(&r.day, 0)
 	default:
-		loguru.Logu.Errorf("unknown period type %d", p)
+		loguru.Logger.Errorf("unknown period type %d", p)
 	}
 
 }

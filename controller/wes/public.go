@@ -38,7 +38,7 @@ func (w *wContext) Handle() {
 		resp, _ := json.Marshal(w.data)
 		err := w.conn.WriteMessage(websocket.BinaryMessage, resp)
 		if err != nil {
-			loguru.Logu.Errorf("return wes failed")
+			loguru.Logger.Errorf("return wes failed")
 		}
 	}
 
@@ -62,7 +62,7 @@ var upper = websocket.Upgrader{
 		return true
 	},
 	Error: func(w http.ResponseWriter, r *http.Request, status int, reason error) {
-		loguru.Logu.Errorf("wes from %s error: %s", r.RemoteAddr, reason.Error())
+		loguru.Logger.Errorf("wes from %s error: %s", r.RemoteAddr, reason.Error())
 	},
 }
 
@@ -78,7 +78,7 @@ func UpgradeConn(c *gin.Context) {
 
 		t, message, err := conn.ReadMessage()
 		if t == websocket.CloseMessage {
-			loguru.Logu.Infof("close from %s", conn.RemoteAddr())
+			loguru.Logger.Infof("close from %s", conn.RemoteAddr())
 			break
 		}
 		if err != nil {
@@ -87,7 +87,7 @@ func UpgradeConn(c *gin.Context) {
 			_ = conn.WriteMessage(t, data)
 			err := conn.Close()
 			if err != nil {
-				loguru.Logu.Errorf("close failed %s", err.Error())
+				loguru.Logger.Errorf("close failed %s", err.Error())
 			}
 			break
 		}

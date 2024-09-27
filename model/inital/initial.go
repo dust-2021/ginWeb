@@ -18,11 +18,11 @@ func InitializeMode() {
 		&permissionMode.Role{}, &permissionMode.UserRole{}, &permissionMode.RolePermission{},
 	)
 	if err != nil {
-		loguru.Logu.Fatalf("create table failed %s", err.Error())
+		loguru.Logger.Fatalf("create table failed %s", err.Error())
 	}
 	hashPwd, err := auth.HashPassword(config.Conf.Server.AdminUser.Password)
 	if err != nil {
-		loguru.Logu.Fatalf("init admin user failed %s", err.Error())
+		loguru.Logger.Fatalf("init admin user failed %s", err.Error())
 	}
 	user := systemMode.User{
 		BaseModel: model.BaseModel{
@@ -48,15 +48,15 @@ func InitializeMode() {
 	}
 	resp := db.Create(&user)
 	if resp.Error != nil {
-		loguru.Logu.Warnf("init admin user failed %s", resp.Error.Error())
+		loguru.Logger.Warnf("init admin user failed %s", resp.Error.Error())
 	}
 	resp = db.Create(&role)
 	if resp.Error != nil {
-		loguru.Logu.Warnf("init admin role failed %s", resp.Error.Error())
+		loguru.Logger.Warnf("init admin role failed %s", resp.Error.Error())
 	}
 	resp = db.Create(&perm)
 	if resp.Error != nil {
-		loguru.Logu.Warnf("init admin permission failed %s", resp.Error.Error())
+		loguru.Logger.Warnf("init admin permission failed %s", resp.Error.Error())
 	}
 	if err != nil {
 		return

@@ -9,13 +9,13 @@ import (
 
 func GetSymbolPrice() {
 	ticker := time.NewTicker(200 * time.Millisecond)
-	loguru.Logu.Infof("getting price")
+	loguru.Logger.Infof("getting price")
 	for i := 0; i < 5; i++ {
 		select {
 		case <-ticker.C:
 			err := reCache.Set("exchange", "price", 0, 60)
 			if err != nil {
-				loguru.Logu.Errorf("get price failed")
+				loguru.Logger.Errorf("get price failed")
 			}
 		}
 	}
@@ -23,8 +23,8 @@ func GetSymbolPrice() {
 }
 
 func init() {
-	_, err := scheduler.ScheduleApp.AddFunc("* * * * * *", GetSymbolPrice)
+	_, err := scheduler.App.AddFunc("* * * * * *", GetSymbolPrice)
 	if err != nil {
-		loguru.Logu.Fatal(err)
+		loguru.Logger.Fatal(err)
 	}
 }

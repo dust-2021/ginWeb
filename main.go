@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ginWeb/config"
 	"ginWeb/model/inital"
+	_ "ginWeb/service/exchangeCore"
 	"ginWeb/service/scheduler"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,7 @@ func application() *gin.Engine {
 	g.Use(gin.Recovery())
 
 	ginLogConf := gin.LoggerConfig{
-		Output: loguru.Logu.Writer(),
+		Output: loguru.Logger.Writer(),
 		Formatter: func(param gin.LogFormatterParams) string {
 			return fmt.Sprintf("[GIN] | %3d | %13v | %15s | %-7s %#v\n%s",
 				param.StatusCode,
@@ -43,6 +44,6 @@ func application() *gin.Engine {
 func main() {
 	g := application()
 	// 启动定时器
-	scheduler.ScheduleApp.Start()
+	scheduler.App.Start()
 	_ = g.Run(fmt.Sprintf(":%d", config.Conf.Server.Port))
 }

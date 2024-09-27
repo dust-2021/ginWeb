@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	Server struct {
+		NodeId       uint8  `yaml:"nodeId"`       // 分布式节点ID
 		Port         uint16 `yaml:"port"`         // 端口
 		Secret       string `yaml:"secret"`       // 加密密钥
 		Debug        bool   `yaml:"debug"`        //

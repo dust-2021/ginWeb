@@ -1,12 +1,13 @@
 package middleware
 
 import (
+	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
-	"sync"
+	"github.com/google/uuid"
 )
 
 type ipLimiter struct {
-	lock     sync.Mutex
+	uuid     string
 	minute   map[string]uint32
 	hour     map[string]uint32
 	day      map[string]uint32
@@ -16,18 +17,26 @@ type ipLimiter struct {
 }
 
 func (i *ipLimiter) Reset(p PeriodType) {
-	i.lock.Lock()
-	defer i.lock.Unlock()
 }
 
 func (i *ipLimiter) Handle(c *gin.Context) {
-	i.lock.Lock()
-	defer i.lock.Unlock()
 
 }
 
-func NewIpLimiter(minute uint32, hour uint32, day uint32) Limiter {
+// NewIpLimiter ip限流器，数据缓存在redis中，可选一个string参数作为限流器唯一ID，否则使用UUID生成
+func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) Limiter {
+	var u string
+	if len(args) > 0 {
+		u = args[0]
+	} else {
+		uid, err := uuid.NewUUID()
+		if err != nil {
+			loguru.Logger.Fatal("create ipLimiter uuid failed")
+		}
+		u = uid.String()
+	}
 	limiter := &ipLimiter{
+		uuid:     u,
 		minute:   make(map[string]uint32),
 		hour:     make(map[string]uint32),
 		day:      make(map[string]uint32),

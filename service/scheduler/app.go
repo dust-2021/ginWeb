@@ -2,8 +2,8 @@ package scheduler
 
 import "github.com/robfig/cron/v3"
 
-var ScheduleApp *cron.Cron
+var App *cron.Cron
 
 func init() {
-	ScheduleApp = cron.New(cron.WithSeconds())
+	App = cron.New(cron.WithSeconds())
 }

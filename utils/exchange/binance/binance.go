@@ -113,7 +113,7 @@ func (receiver *Binance) Request(item exchange.ExInterface) {
 
 	if err != nil {
 		item.SetResult(nil, err)
-		loguru.Logu.Errorf("request failed %s", err.Error())
+		loguru.Logger.Errorf("request failed %s", err.Error())
 		return
 	}
 	data, err := io.ReadAll(res.Body)
@@ -123,12 +123,12 @@ func (receiver *Binance) Request(item exchange.ExInterface) {
 	if res.StatusCode != 200 {
 		err = errors.New(fmt.Sprintf("http status code %d: %s", res.StatusCode, string(data)))
 		item.SetResult(nil, err)
-		loguru.Logu.Errorf("request binance %s failed: %s", totalUrl, err.Error())
+		loguru.Logger.Errorf("request binance %s failed: %s", totalUrl, err.Error())
 		return
 	}
 
 	item.SetResult(data, nil)
-	loguru.Logu.Infof("request binance %s success", totalUrl)
+	loguru.Logger.Infof("request binance %s success", totalUrl)
 	return
 }
 

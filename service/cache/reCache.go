@@ -36,7 +36,6 @@ func Set(namespace string, key string, value interface{}, ex uint) error {
 //}
 
 func Get(namespace string, key string) (interface{}, error) {
-
 	resp := database.Rdb.Get(context.Background(), formatter(namespace, key))
 	if resp.Err() != nil {
 		return nil, resp.Err()

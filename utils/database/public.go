@@ -15,27 +15,27 @@ import (
 	"time"
 )
 
-type LogrusLogger struct {
+type dbLogger struct {
 	Logger *logrus.Logger
 }
 
-func (l *LogrusLogger) LogMode(level logger.LogLevel) logger.Interface {
+func (l *dbLogger) LogMode(level logger.LogLevel) logger.Interface {
 	return l
 }
 
-func (l *LogrusLogger) Info(ctx context.Context, msg string, args ...interface{}) {
+func (l *dbLogger) Info(ctx context.Context, msg string, args ...interface{}) {
 	l.Logger.Infof("[GORM] | "+msg, args...)
 }
 
-func (l *LogrusLogger) Warn(ctx context.Context, msg string, args ...interface{}) {
+func (l *dbLogger) Warn(ctx context.Context, msg string, args ...interface{}) {
 	l.Logger.Warnf("[GORM] | "+msg, args...)
 }
 
-func (l *LogrusLogger) Error(ctx context.Context, msg string, args ...interface{}) {
+func (l *dbLogger) Error(ctx context.Context, msg string, args ...interface{}) {
 	l.Logger.Errorf("[GORM] | "+msg, args...)
 }
 
-func (l *LogrusLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+func (l *dbLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	if err != nil {
 		l.Logger.Errorf("[GORM] | Error: %v", err)
 	}
@@ -47,8 +47,8 @@ var Db *gorm.DB
 var Rdb *redis.Client
 
 func init() {
-	logu := &LogrusLogger{
-		Logger: loguru.Logu,
+	logu := &dbLogger{
+		Logger: loguru.DbLogger,
 	}
 	db, err := gorm.Open(mysql.Open(config.Conf.Database.Link), &gorm.Config{
 		Logger: logu,
@@ -67,9 +67,9 @@ func init() {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	if err := sqlDB.Ping(); err != nil {
-		loguru.Logu.Infof("Failed to ping database: %s", err.Error())
+		loguru.Logger.Infof("Failed to ping database: %s", err.Error())
 	} else {
-		loguru.Logu.Info("Successfully connected to the database")
+		loguru.Logger.Info("Successfully connected to the database")
 	}
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Conf.Redis.Host, config.Conf.Redis.Port),
@@ -79,9 +79,9 @@ func init() {
 	})
 	resp := rdb.Ping(context.Background())
 	if err := resp.Err(); err != nil {
-		loguru.Logu.Errorf("Failed to ping redis: %s", err.Error())
+		loguru.Logger.Errorf("Failed to ping redis: %s", err.Error())
 	} else {
-		loguru.Logu.Info("Successfully connected to redis")
+		loguru.Logger.Info("Successfully connected to redis")
 	}
 	Rdb = rdb
 }
