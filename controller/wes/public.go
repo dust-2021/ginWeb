@@ -9,6 +9,10 @@ import (
 	"net/http"
 )
 
+type handleFunc func(ctx *wContext)
+
+var tasks map[string]handleFunc
+
 type payload struct {
 	Id        string   `json:"id"`
 	Method    string   `json:"method"`
@@ -16,24 +20,41 @@ type payload struct {
 	Signature string   `json:"signature"`
 }
 
-type WContext struct {
-	Conn *websocket.Conn
+type wContext struct {
+	conn      *websocket.Conn
+	data      payload
+	attribute map[string]interface{}
 }
 
-type handleFunc func(ctx *WContext)
+func (w *wContext) Get(k string) (interface{}, bool) {
+	attr, exist := w.attribute[k]
+	return attr, exist
+}
 
-type Ex interface {
-	Handle(*WContext)
+func (w *wContext) Handle() {
+	if f, ok := tasks[w.data.Method]; ok {
+		go f(w)
+	} else {
+		resp, _ := json.Marshal(w.data)
+		err := w.conn.WriteMessage(websocket.BinaryMessage, resp)
+		if err != nil {
+			loguru.Logu.Errorf("return wes failed")
+		}
+	}
+
 }
 
 // 根据报文分配处理函数
-func handlePayload(message []byte) error {
+func handlePayload(conn *websocket.Conn, message []byte) {
 	var data payload
 	err := json.Unmarshal(message, &data)
 	if err != nil {
-		return err
 	}
-	return nil
+	ctx := wContext{
+		conn: conn,
+		data: data,
+	}
+	ctx.Handle()
 }
 
 var upper = websocket.Upgrader{
@@ -54,14 +75,24 @@ func UpgradeConn(c *gin.Context) {
 		return
 	}
 	for {
+
 		t, message, err := conn.ReadMessage()
 		if t == websocket.CloseMessage {
 			loguru.Logu.Infof("close from %s", conn.RemoteAddr())
+			break
 		}
 		if err != nil {
-
+			resp := map[string]interface{}{}
+			data, _ := json.Marshal(resp)
+			_ = conn.WriteMessage(t, data)
+			err := conn.Close()
+			if err != nil {
+				loguru.Logu.Errorf("close failed %s", err.Error())
+			}
+			break
 		}
-		err = handlePayload(message)
+		go handlePayload(conn, message)
+
 	}
 }
 

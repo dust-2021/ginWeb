@@ -37,14 +37,14 @@ func InitializeMode() {
 			Id: 1,
 		},
 		RoleName:    "admin",
-		Description: "管理员角色",
+		Description: "系统管理员",
 	}
 	perm := permissionMode.Permissions{
 		BaseModel: model.BaseModel{
 			Id: 1,
 		},
 		PermissionName: "admin",
-		Description:    "系统管理员",
+		Description:    "管理员权限",
 	}
 	resp := db.Create(&user)
 	if resp.Error != nil {

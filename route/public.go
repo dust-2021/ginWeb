@@ -13,7 +13,7 @@ import "ginWeb/controller/auth"
 // InitRoute 注册路由函数
 func InitRoute(g *gin.Engine) error {
 	// websocket
-	g.Handle("GET", "/wes", middleware.NewLoginStatus().Handle, wes.UpgradeConn)
+	g.Handle("GET", "/ws", middleware.NewLoginStatus().Handle, wes.UpgradeConn)
 
 	// 开放api组
 	api := g.Group("/api")
