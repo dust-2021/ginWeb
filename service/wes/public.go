@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+var handleTimeout = 2 * time.Second
+
 // ws处理逻辑类型
 type handleFunc func(ctx *WContext) interface{}
 
@@ -24,6 +26,15 @@ type payload struct {
 	Method    string   `json:"method"`
 	Params    []string `json:"params"`
 	Signature string   `json:"signature"`
+}
+
+func handleLog(code int, ip string, method string, data interface{}, cost time.Duration) {
+	if code == 0 {
+		loguru.Logger.Infof(" [WS] | %5d | %8s | %20s | %10s | %v", code, cost.String(), ip, method, data)
+	} else {
+		loguru.Logger.Errorf(" [WS] | %5d | %8s | %20s | %10s | %v", code, cost.String(), ip, method, data)
+	}
+
 }
 
 // ws返回类型
@@ -47,7 +58,7 @@ type WContext struct {
 }
 
 // 设置返回结果并发送
-func (w *WContext) setResult(code int, data interface{}) {
+func (w *WContext) setResult(code int, data interface{}) error {
 	res := resp{
 		Id:         w.req.Id,
 		StatusCode: code,
@@ -55,11 +66,9 @@ func (w *WContext) setResult(code int, data interface{}) {
 	}
 	msg, err := json.Marshal(res)
 	if err != nil {
-		loguru.Logger.Errorf("ws resp cant be serialized: %s", res.String())
-		return
+		return err
 	}
-	_ = w.conn.WriteMessage(websocket.TextMessage, msg)
-	loguru.Logger.Infof(" [WS] | %5d | %10s | %10s | %s", code, w.conn.RemoteAddr().String(), w.req.Method, res.String())
+	return w.conn.WriteMessage(websocket.TextMessage, msg)
 }
 
 // Get 获取上下文变量
@@ -75,25 +84,36 @@ func (w *WContext) Set(k string, v interface{}) {
 
 func (w *WContext) handle() {
 	if f, ok := tasks[w.req.Method]; ok {
-		c := make(chan interface{}, 1)
+		c := make(chan struct{}, 1)
 		// 执行处理逻辑
 		go func() {
-			c <- f(w)
+			start := time.Now()
+			result := f(w)
+			cost := time.Since(start)
+			handleLog(0, w.conn.RemoteAddr().String(), w.req.Method, result, cost)
+			c <- struct{}{}
 		}()
 		defer w.cancel()
 		for {
 			select {
 			case <-w.ctx.Done():
-				w.setResult(1, "timeout")
+				_ = w.setResult(1, "timeout")
+				handleLog(1, w.conn.RemoteAddr().String(), w.req.Method, "timeout", handleTimeout)
 				return
-			case data := <-c:
-				w.setResult(0, data)
+			case <-c:
 				return
 			}
 
 		}
 	} else {
-		w.setResult(404, "not found")
+		err := w.setResult(404, "not found")
+		var msg interface{}
+		if err != nil {
+			msg = err.Error()
+		} else {
+			msg = "not found"
+		}
+		handleLog(1, w.conn.RemoteAddr().String(), w.req.Method, msg, 0)
 	}
 
 }
@@ -116,7 +136,7 @@ func handlePayload(conn *websocket.Conn, message []byte) {
 			Data:       msg,
 		})
 		_ = conn.WriteMessage(websocket.TextMessage, res)
-		loguru.Logger.Infof(" [WS] | %5d | %10s | %s", 1, conn.RemoteAddr().String(), msg)
+		handleLog(1, conn.RemoteAddr().String(), "-", msg, 0)
 		return
 	}
 	ctx := newWContext(conn, data, 10)

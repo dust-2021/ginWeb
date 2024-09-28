@@ -33,9 +33,9 @@ func InitRoute(g *gin.Engine) error {
 	tradeApi := sapi.Group("/trade")
 	trade.Account{}.RegisterRoute("/account", tradeApi)
 
-	// 转发到交易所api组
-	transportApi := tradeApi.Group("/transport")
-	spot.Price{}.RegisterRoute("/api/v3/ticker/price", transportApi)
+	// binance接口
+	binance := tradeApi.Group("/binance")
+	spot.Price{}.RegisterRoute("/api/v3/ticker/price", binance)
 	return nil
 }
 

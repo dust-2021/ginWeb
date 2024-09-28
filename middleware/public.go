@@ -48,7 +48,7 @@ func init() {
 	// 添加限流器reset的定时任务
 	limiterContainer = &[]Limiter{}
 	_, err := scheduler.App.AddFunc("0 * * * * *", func() {
-		loguru.Logger.Debug("limiter minute period resetting.")
+		loguru.Logger.Debugf("limiter minute period resetting. limiter count: %d", len(*limiterContainer))
 		for _, v := range *limiterContainer {
 			go v.Reset(MinuteP)
 		}
@@ -58,7 +58,7 @@ func init() {
 	}
 
 	_, err = scheduler.App.AddFunc("0 0 * * * *", func() {
-		loguru.Logger.Debug("limiter hour period resetting.")
+		loguru.Logger.Debugf("limiter hour period resetting. limiter count: %d", len(*limiterContainer))
 		for _, v := range *limiterContainer {
 			go v.Reset(HourP)
 		}
@@ -68,7 +68,7 @@ func init() {
 	}
 
 	_, err = scheduler.App.AddFunc("0 0 0 * * *", func() {
-		loguru.Logger.Debug("limiter day period resetting.")
+		loguru.Logger.Debugf("limiter day period resetting. limiter count: %d", len(*limiterContainer))
 		for _, v := range *limiterContainer {
 			go v.Reset(DayP)
 		}

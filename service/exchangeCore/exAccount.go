@@ -6,6 +6,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// TradeArgs 交易参数
 type TradeArgs struct {
 	Symbol       string          `json:"symbol"`
 	Side         TradeSide       `json:"side"`

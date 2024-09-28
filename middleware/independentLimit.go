@@ -39,19 +39,19 @@ func (r *independentLimiter) Reset(p PeriodType) {
 func (r *independentLimiter) Handle(c *gin.Context) {
 	if r.MinuteLm != 0 && atomic.LoadUint32(&r.minute) > r.MinuteLm {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dataType.JsonWrong{
-			Code: 1, Message: fmt.Sprintf("more than %d in a minute", r.MinuteLm),
+			Code: 1, Message: fmt.Sprintf("server is busy"),
 		})
 		return
 	}
 	if r.HourLm != 0 && atomic.LoadUint32(&r.hour) > r.HourLm {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dataType.JsonWrong{
-			Code: 1, Message: fmt.Sprintf("more than %d in a hour", r.HourLm),
+			Code: 1, Message: fmt.Sprintf("server is busy"),
 		})
 		return
 	}
 	if r.DayLm != 0 && atomic.LoadUint32(&r.day) > r.DayLm {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dataType.JsonWrong{
-			Code: 1, Message: fmt.Sprintf("more than %d in a day", r.DayLm),
+			Code: 1, Message: fmt.Sprintf("server is busy"),
 		})
 		return
 	}
