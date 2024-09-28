@@ -4,8 +4,8 @@ import (
 	"ginWeb/controller/perm"
 	"ginWeb/controller/trade"
 	"ginWeb/controller/trade/spot"
-	"ginWeb/controller/wes"
 	"ginWeb/middleware"
+	"ginWeb/service/wes"
 	"github.com/gin-gonic/gin"
 )
 import "ginWeb/controller/auth"
@@ -37,4 +37,8 @@ func InitRoute(g *gin.Engine) error {
 	transportApi := tradeApi.Group("/transport")
 	spot.Price{}.RegisterRoute("/api/v3/ticker/price", transportApi)
 	return nil
+}
+
+func InitWs() {
+
 }

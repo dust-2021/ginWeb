@@ -9,15 +9,6 @@ import (
 	"sync/atomic"
 )
 
-type PeriodType int
-
-const (
-	MinuteP PeriodType = iota
-	HourP
-	DayP
-	All
-)
-
 type independentLimiter struct {
 	minute   uint32
 	hour     uint32
@@ -77,26 +68,26 @@ type rollingIndependentLimiter struct {
 }
 
 func (r *rollingIndependentLimiter) Reset(p PeriodType) {
-	if p != MinuteP {
-		return
-	}
-	// 不必验证修改期间是否被修改
-	//for {
-	//	old := atomic.LoadUint32(&r.count)
-	//	if old <= r.ReduceInMinute {
-	//		atomic.StoreUint32(&r.count, 0)
-	//		return
-	//	}
-	//	val := old - r.ReduceInMinute
-	//	if atomic.CompareAndSwapUint32(&r.count, old, val) {
-	//		return
-	//	}
-	//}
-	old := atomic.LoadUint32(&r.count)
-	if old <= r.ReduceInMinute {
-		atomic.StoreUint32(&r.count, 0)
-	} else {
-		atomic.StoreUint32(&r.count, old-r.ReduceInMinute)
+	if p == MinuteP || p == All {
+
+		// 不必验证修改期间是否被修改
+		//for {
+		//	old := atomic.LoadUint32(&r.count)
+		//	if old <= r.ReduceInMinute {
+		//		atomic.StoreUint32(&r.count, 0)
+		//		return
+		//	}
+		//	val := old - r.ReduceInMinute
+		//	if atomic.CompareAndSwapUint32(&r.count, old, val) {
+		//		return
+		//	}
+		//}
+		old := atomic.LoadUint32(&r.count)
+		if old <= r.ReduceInMinute {
+			atomic.StoreUint32(&r.count, 0)
+		} else {
+			atomic.StoreUint32(&r.count, old-r.ReduceInMinute)
+		}
 	}
 }
 

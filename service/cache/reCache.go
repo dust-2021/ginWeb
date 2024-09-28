@@ -58,3 +58,19 @@ func Del(namespace string, key string) error {
 	}
 	return nil
 }
+
+func Incr(namespace string, key string) (int64, error) {
+	resp := database.Rdb.Incr(context.Background(), formatter(namespace, key))
+	if resp.Err() != nil {
+		return 0, resp.Err()
+	}
+	return resp.Val(), nil
+}
+
+func Decr(namespace string, key string) (int64, error) {
+	resp := database.Rdb.Decr(context.Background(), formatter(namespace, key))
+	if resp.Err() != nil {
+		return 0, resp.Err()
+	}
+	return resp.Val(), nil
+}

@@ -6,15 +6,42 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// PeriodType 限流器周期类型
+type PeriodType int
+
+const (
+	MinuteP PeriodType = iota
+	HourP
+	DayP
+	All
+)
+
+func (p PeriodType) String() string {
+	switch p {
+	case MinuteP:
+		return "minute"
+	case HourP:
+		return "hour"
+	case DayP:
+		return "day"
+	case All:
+		return "all"
+	default:
+		return "unknown"
+	}
+}
+
 type Middleware interface {
 	Handle(ctx *gin.Context)
 }
 
 type Limiter interface {
+	// Reset 周期性重置计数器
 	Reset(PeriodType)
 	Handle(*gin.Context)
 }
 
+// 所有已生成的限流器
 var limiterContainer *[]Limiter
 
 func init() {
@@ -24,6 +51,26 @@ func init() {
 		loguru.Logger.Debug("limiter minute period resetting.")
 		for _, v := range *limiterContainer {
 			go v.Reset(MinuteP)
+		}
+	})
+	if err != nil {
+		loguru.Logger.Fatal(err)
+	}
+
+	_, err = scheduler.App.AddFunc("0 0 * * * *", func() {
+		loguru.Logger.Debug("limiter hour period resetting.")
+		for _, v := range *limiterContainer {
+			go v.Reset(HourP)
+		}
+	})
+	if err != nil {
+		loguru.Logger.Fatal(err)
+	}
+
+	_, err = scheduler.App.AddFunc("0 0 0 * * *", func() {
+		loguru.Logger.Debug("limiter day period resetting.")
+		for _, v := range *limiterContainer {
+			go v.Reset(DayP)
 		}
 	})
 	if err != nil {

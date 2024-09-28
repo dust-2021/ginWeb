@@ -2,7 +2,6 @@ package exchangeCore
 
 import (
 	reCache "ginWeb/service/cache"
-	"ginWeb/service/scheduler"
 	"ginWeb/utils/loguru"
 	"time"
 )
@@ -23,8 +22,8 @@ func GetSymbolPrice() {
 }
 
 func init() {
-	_, err := scheduler.App.AddFunc("* * * * * *", GetSymbolPrice)
-	if err != nil {
-		loguru.Logger.Fatal(err)
-	}
+	//_, err := scheduler.App.AddFunc("* * * * * *", GetSymbolPrice)
+	//if err != nil {
+	//	loguru.Logger.Fatal(err)
+	//}
 }
