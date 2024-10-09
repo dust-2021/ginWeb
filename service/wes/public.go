@@ -15,7 +15,7 @@ import (
 var handleTimeout = 2 * time.Second
 
 // ws处理逻辑类型
-type handleFunc func(ctx *WContext) interface{}
+type handleFunc func(ctx *WContext) (interface{}, error)
 
 // 已注册的ws处理逻辑
 var tasks map[string]handleFunc
@@ -28,7 +28,7 @@ type payload struct {
 	Signature string   `json:"signature"`
 }
 
-func handleLog(code int, ip string, method string, data interface{}, cost time.Duration) {
+func handleLog(code int, ip string, method string, data string, cost time.Duration) {
 	if code == 0 {
 		loguru.Logger.Infof(" [WS] | %5d | %8s | %20s | %10s | %v", code, cost.String(), ip, method, data)
 	} else {
@@ -53,8 +53,9 @@ type WContext struct {
 	conn      *websocket.Conn
 	req       payload
 	attribute map[string]interface{}
-	ctx       context.Context
+	ctx       *context.Context
 	cancel    context.CancelFunc
+	signal    bool
 }
 
 // 设置返回结果并发送
@@ -85,29 +86,39 @@ func (w *WContext) Set(k string, v interface{}) {
 func (w *WContext) handle() {
 	if f, ok := tasks[w.req.Method]; ok {
 		c := make(chan struct{}, 1)
+		start := time.Now()
 		// 执行处理逻辑
 		go func() {
-			start := time.Now()
-			result := f(w)
-			cost := time.Since(start)
-			handleLog(0, w.conn.RemoteAddr().String(), w.req.Method, result, cost)
-			c <- struct{}{}
-		}()
-		defer w.cancel()
-		for {
-			select {
-			case <-w.ctx.Done():
-				_ = w.setResult(1, "timeout")
-				handleLog(1, w.conn.RemoteAddr().String(), w.req.Method, "timeout", handleTimeout)
-				return
-			case <-c:
-				return
+			result, err := f(w)
+
+			var sendErr error
+			if err != nil {
+				sendErr = w.setResult(1, err.Error())
+			} else {
+				sendErr = w.setResult(0, result)
 			}
 
+			if sendErr != nil {
+				loguru.Logger.Errorf("ws send error: %s", sendErr.Error())
+			}
+
+		}()
+		defer w.cancel()
+
+		select {
+		case <-(*w.ctx).Done():
+			_ = w.setResult(1, "timeout")
+			handleLog(1, w.conn.RemoteAddr().String(), w.req.Method, "timeout", handleTimeout)
+			return
+		case <-c:
+			cost := time.Since(start)
+			handleLog(0, w.conn.RemoteAddr().String(), w.req.Method, "success", cost)
+			return
 		}
+
 	} else {
 		err := w.setResult(404, "not found")
-		var msg interface{}
+		var msg string
 		if err != nil {
 			msg = err.Error()
 		} else {
@@ -118,16 +129,18 @@ func (w *WContext) handle() {
 
 }
 
-// 创建ws上下文
-func newWContext(conn *websocket.Conn, data payload, timeout uint32) *WContext {
+// NewWContext 创建ws上下文
+func NewWContext(conn *websocket.Conn, data payload, timeout uint32) *WContext {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	return &WContext{conn: conn, req: data, attribute: make(map[string]interface{}), ctx: ctx, cancel: cancel}
+	return &WContext{conn: conn, req: data, attribute: make(map[string]interface{}), ctx: &ctx, cancel: cancel}
 }
 
 // 根据报文分配处理函数
 func handlePayload(conn *websocket.Conn, message []byte) {
 	var data payload
 	err := json.Unmarshal(message, &data)
+
+	// 非标准报文
 	if err != nil {
 		msg := fmt.Sprintf("wrong message: %s", string(message))
 		res, _ := json.Marshal(resp{
@@ -139,11 +152,11 @@ func handlePayload(conn *websocket.Conn, message []byte) {
 		handleLog(1, conn.RemoteAddr().String(), "-", msg, 0)
 		return
 	}
-	ctx := newWContext(conn, data, 10)
+	ctx := NewWContext(conn, data, 10)
 	ctx.handle()
 }
 
-var upper = websocket.Upgrader{
+var upper = &websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
@@ -161,7 +174,6 @@ func UpgradeConn(c *gin.Context) {
 		return
 	}
 	for {
-
 		t, message, err := conn.ReadMessage()
 		if t == websocket.CloseMessage {
 			loguru.Logger.Infof("close from %s", conn.RemoteAddr())
@@ -182,5 +194,13 @@ func UpgradeConn(c *gin.Context) {
 	}
 }
 
+func RegisterHandler(key string, f handleFunc) {
+	if _, flag := tasks[key]; flag {
+		return
+	}
+	tasks[key] = f
+}
+
 func init() {
+	tasks = make(map[string]handleFunc)
 }

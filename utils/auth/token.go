@@ -48,8 +48,7 @@ type Token struct {
 	Expire     time.Time              `json:"expire"`
 }
 
-// Sign 使用hmac生成Token
-func (receiver *Token) Sign() (token string, err error) {
+func (receiver *Token) hSign() (token string, err error) {
 	data, err := json.Marshal(receiver)
 	if err != nil {
 		return
@@ -71,6 +70,14 @@ func (receiver *Token) Sign() (token string, err error) {
 	return fmt.Sprintf("%s.%s.%s", jwtHeader, base64.StdEncoding.EncodeToString(data), encryptedDataHex), nil
 }
 
+func (receiver *Token) Sign() (string, error) {
+	if config.Conf.Server.TokenEncrypt {
+		return receiver.AesEncrypt()
+
+	}
+	return receiver.hSign()
+}
+
 // checkSign 验证token并返回Token对象
 func checkSign(t string) (token *Token, err error) {
 	tokenChars := strings.Split(t, ".")
@@ -87,7 +94,7 @@ func checkSign(t string) (token *Token, err error) {
 		return
 	}
 	// 重新生成签名
-	recheck, err := token.Sign()
+	recheck, err := token.hSign()
 	if err != nil {
 		return
 	}

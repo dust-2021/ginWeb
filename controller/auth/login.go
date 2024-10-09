@@ -52,12 +52,7 @@ func (receiver Login) V1(c *gin.Context) {
 		Permission: permissions,
 		Expire:     time.Now().Add(time.Second * time.Duration(config.Conf.Server.TokenExpire)),
 	}
-	data := ""
-	if config.Conf.Server.TokenEncrypt {
-		data, err = token.AesEncrypt()
-	} else {
-		data, err = token.Sign()
-	}
+	data, err := token.Sign()
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code:    1,

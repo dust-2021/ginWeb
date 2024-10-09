@@ -74,7 +74,7 @@ func (receiver *Binance) urlFormatter(data map[string]interface{}, sign bool) (s
 	return result, nil
 }
 
-// Request 同步请求
+// Request 单次请求
 func (receiver *Binance) Request(item exchange.ExInterface) {
 	// 签名请求参数
 	urlParam, err := receiver.urlFormatter(item.ReqData(), item.Sign())
@@ -132,6 +132,7 @@ func (receiver *Binance) Request(item exchange.ExInterface) {
 	return
 }
 
+// AsyncRequests 异步批量请求
 func (receiver *Binance) AsyncRequests(reqs ...exchange.ExInterface) error {
 	if len(reqs) == 0 {
 		return errors.New("reqs is empty")
@@ -157,6 +158,7 @@ func (receiver *Binance) AsyncRequests(reqs ...exchange.ExInterface) error {
 	return nil
 }
 
+// SyncRequests 同步请求
 func (receiver *Binance) SyncRequests(reqs ...exchange.ExInterface) error {
 	if len(reqs) == 0 {
 		return errors.New("reqs is empty")

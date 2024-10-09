@@ -16,7 +16,7 @@ async def main():
     ws = await session.ws_connect('ws://127.0.0.1:8000/ws', headers={
         "Token": token})
     data = {
-        "id": 1,
+        "id": "1",
         "method": "test.get",
         "params": [
 
@@ -25,6 +25,8 @@ async def main():
     await ws.send_str(json.dumps(data))
     data = await ws.receive(5)
     print(data.data)
+    await ws.ping()
+
     await ws.close()
     await session.close()
 
