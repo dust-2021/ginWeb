@@ -39,19 +39,19 @@ func (r *independentLimiter) Reset(p PeriodType) {
 func (r *independentLimiter) Handle(c *gin.Context) {
 	if r.MinuteLm != 0 && atomic.LoadUint32(&r.minute) > r.MinuteLm {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dataType.JsonWrong{
-			Code: 1, Message: fmt.Sprintf("server is busy"),
+			Code: dataType.RouteLimited, Message: fmt.Sprintf("server is busy"),
 		})
 		return
 	}
 	if r.HourLm != 0 && atomic.LoadUint32(&r.hour) > r.HourLm {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dataType.JsonWrong{
-			Code: 1, Message: fmt.Sprintf("server is busy"),
+			Code: dataType.RouteLimited, Message: fmt.Sprintf("server is busy"),
 		})
 		return
 	}
 	if r.DayLm != 0 && atomic.LoadUint32(&r.day) > r.DayLm {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dataType.JsonWrong{
-			Code: 1, Message: fmt.Sprintf("server is busy"),
+			Code: dataType.RouteLimited, Message: fmt.Sprintf("server is busy"),
 		})
 		return
 	}
@@ -94,7 +94,7 @@ func (r *rollingIndependentLimiter) Reset(p PeriodType) {
 func (r *rollingIndependentLimiter) Handle(c *gin.Context) {
 	if atomic.LoadUint32(&r.count) > r.Limit {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, dataType.JsonWrong{
-			Code: 1, Message: "too much request in a time window",
+			Code: dataType.RouteLimited, Message: "too much request in a time window",
 		})
 	}
 }

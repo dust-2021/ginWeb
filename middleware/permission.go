@@ -68,20 +68,20 @@ func (p *permission) Handle(c *gin.Context) {
 	tokenPtr, f := c.Get("token")
 	if !f {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: 1, Message: "without token",
+			Code: dataType.NoToken, Message: "without token",
 		})
 		return
 	}
 	token, flag := tokenPtr.(*auth.Token)
 	if !flag {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: 1, Message: "without token",
+			Code: dataType.WrongToken, Message: "without token",
 		})
 		return
 	}
 	if !(containsAll(token.Permission, p.Permission) && containOne(token.Permission, p.SelectPermission)) {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: 1, Message: "permission don't match",
+			Code: dataType.DeniedByPermission, Message: "permission don't match",
 		})
 	}
 

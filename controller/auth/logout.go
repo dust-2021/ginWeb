@@ -20,11 +20,16 @@ func (receiver Logout) V1(c *gin.Context) {
 		sign, _ := token.Sign()
 		err := reCache.Set("blackToken", sign, 1, uint(token.Expire.Sub(time.Now()).Seconds()))
 		if err != nil {
+
+			c.AbortWithStatusJSON(200, dataType.JsonWrong{
+				Code:    dataType.Unknown,
+				Message: "failed",
+			})
 			return
 		}
 	}
 	c.JSON(200, dataType.JsonRes{
-		Code: 0, Data: "success",
+		Code: dataType.Success, Data: "success",
 	})
 }
 

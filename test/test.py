@@ -3,21 +3,26 @@ import json
 
 import aiohttp
 
-
-async def main():
+async def login(session: aiohttp.ClientSession) -> str:
     user = "13900004990"
     password = "123456"
-
-    session = aiohttp.ClientSession()
     resp = await session.post("http://127.0.0.1:8000/api/login",
                               data=json.dumps({"username": user, "password": password}))
     info = await resp.json()
-    token = info['data']
+    return info['data']
+
+
+
+async def main():
+
+
+    session = aiohttp.ClientSession()
+
     ws = await session.ws_connect('ws://127.0.0.1:8000/ws', headers={
-        "Token": token})
+        "Token": await login(session),})
     data = {
-        "id": "1",
-        "method": "test.get",
+        "id": 1,
+        "method": "hello",
         "params": [
 
         ]

@@ -23,7 +23,7 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 	err := ctx.ShouldBindJSON(&data)
 	if err != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: err.Error(),
+			Code: dataType.WrongBody, Message: err.Error(),
 		})
 		return
 	}
@@ -31,7 +31,7 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 	database.Db.Where("role_id = ? and user_id = ?", data.GrantId, data.ToId).First(&existed)
 	if existed.Id != 0 {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 0, Message: "already existed",
+			Code: dataType.AlreadyExist, Message: "already existed",
 		})
 		return
 	}
@@ -40,14 +40,14 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 	resp := database.Db.Where("id = ?", data.GrantId).First(&role)
 	if resp.Error != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "invalid role",
+			Code: dataType.WrongData, Message: "invalid role",
 		})
 		return
 	}
 	resp = database.Db.Where("id = ?", data.ToId).First(&user)
 	if resp.Error != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "invalid user",
+			Code: dataType.WrongData, Message: "invalid user",
 		})
 		return
 	}
@@ -58,7 +58,7 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 	resp = database.Db.Create(&rec)
 	if resp.Error != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "failed: " + resp.Error.Error(),
+			Code: dataType.Unknown, Message: "failed: " + resp.Error.Error(),
 		})
 		return
 	}
@@ -72,7 +72,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 	err := ctx.ShouldBindJSON(&data)
 	if err != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: err.Error(),
+			Code: dataType.WrongBody, Message: err.Error(),
 		})
 		return
 	}
@@ -80,7 +80,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 	database.Db.Where("group_id = ? and user_id = ?", data.GrantId, data.ToId).First(&existed)
 	if existed.Id != 0 {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 0, Message: "already existed",
+			Code: dataType.Success, Message: "already existed",
 		})
 		return
 	}
@@ -89,14 +89,14 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 	resp := database.Db.Where("id = ?", data.GrantId).First(&group)
 	if resp.Error != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "invalid group",
+			Code: dataType.WrongData, Message: "invalid group",
 		})
 		return
 	}
 	resp = database.Db.Where("id = ?", data.ToId).First(&user)
 	if resp.Error != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "invalid user",
+			Code: dataType.WrongData, Message: "invalid user",
 		})
 		return
 	}
@@ -106,7 +106,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 	})
 	if resp.Error != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "failed: " + resp.Error.Error(),
+			Code: dataType.Unknown, Message: "failed: " + resp.Error.Error(),
 		})
 		return
 	}

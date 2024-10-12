@@ -26,7 +26,7 @@ func (receiver Login) V1(c *gin.Context) {
 	err := c.BindJSON(&j)
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: err.Error(),
+			Code: dataType.WrongBody, Message: err.Error(),
 		})
 		return
 	}
@@ -35,7 +35,7 @@ func (receiver Login) V1(c *gin.Context) {
 	result := database.Db.Where("phone = ?", j.Username).Or("email = ?", j.Username).First(&u)
 	pwd, err := auth.HashPassword(j.Password)
 	if result.Error != nil || err != nil || pwd != u.PasswordHash {
-		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{Code: 1,
+		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{Code: dataType.WrongData,
 			Message: "username or password invalid"})
 		return
 	}
@@ -55,7 +55,7 @@ func (receiver Login) V1(c *gin.Context) {
 	data, err := token.Sign()
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code:    1,
+			Code:    dataType.Unknown,
 			Message: "generate token failed",
 		})
 		return

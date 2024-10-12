@@ -11,10 +11,10 @@ import (
 var Logger *logrus.Logger
 var DbLogger *logrus.Logger
 
-type MyFormatter struct {
+type myFormatter struct {
 }
 
-func (f *MyFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+func (f *myFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	logMessage := fmt.Sprintf("[%-7s] | [%s] | %s\n",
 		strings.ToUpper(entry.Level.String()),
 		entry.Time.Format("2006-01-02 15:04:05.0000"),
@@ -43,7 +43,7 @@ func init() {
 	}
 	Logger = &logrus.Logger{
 		Out:       file,
-		Formatter: &MyFormatter{},
+		Formatter: &myFormatter{},
 		Hooks:     make(logrus.LevelHooks),
 		Level:     logrus.Level(level),
 	}
@@ -57,7 +57,7 @@ func init() {
 		}
 		DbLogger = &logrus.Logger{
 			Out:       f,
-			Formatter: &MyFormatter{},
+			Formatter: &myFormatter{},
 			Hooks:     make(logrus.LevelHooks),
 			Level:     logrus.Level(level),
 		}

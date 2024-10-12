@@ -43,7 +43,10 @@ func (l *dbLogger) Trace(ctx context.Context, begin time.Time, fc func() (string
 	l.Logger.Infof("[GORM] | SQL: %s", sql)
 }
 
+// Db 数据库连接对象
 var Db *gorm.DB
+
+// Rdb redis连接对象
 var Rdb *redis.Client
 
 func init() {

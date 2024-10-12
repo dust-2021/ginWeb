@@ -21,7 +21,7 @@ func (a Account) AddV1(c *gin.Context) {
 	err := c.Bind(&data)
 	if err != nil {
 		c.JSON(200, dataType.JsonWrong{
-			Code: 1, Message: err.Error(),
+			Code: dataType.WrongBody, Message: err.Error(),
 		})
 		return
 	}
@@ -36,13 +36,13 @@ func (a Account) AddV1(c *gin.Context) {
 	f, err := checker.GetResult()
 	if err != nil {
 		c.JSON(200, dataType.JsonWrong{
-			Code: 1, Message: err.Error(),
+			Code: dataType.Unknown, Message: err.Error(),
 		})
 		return
 	}
 	if !f {
 		c.JSON(200, dataType.JsonWrong{
-			Code: 1, Message: "check failed",
+			Code: dataType.Unknown, Message: "check failed",
 		})
 		return
 	}

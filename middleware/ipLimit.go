@@ -44,33 +44,33 @@ func (i *ipLimiter) Handle(c *gin.Context) {
 	countM, err := reCache.Incr(namespace, i.key(MinuteP, ip))
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "limiter failed",
+			Code: dataType.Unknown, Message: "limiter failed",
 		})
 		return
 	}
 	countH, err := reCache.Incr(namespace, i.key(HourP, ip))
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "limiter failed",
+			Code: dataType.Unknown, Message: "limiter failed",
 		})
 		return
 	}
 	countD, err := reCache.Incr(namespace, i.key(DayP, ip))
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "limiter failed",
+			Code: dataType.Unknown, Message: "limiter failed",
 		})
 		return
 	}
 	if (i.minuteLm > 0 && countM > int64(i.minuteLm)) || (i.hourLm > 0 && countH > int64(i.hourLm)) || (i.dayLm > 0 && countD > int64(i.dayLm)) {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: 1, Message: "denied by IPLimiter",
+			Code: dataType.IpLimited, Message: "denied by IPLimiter",
 		})
 		return
 	}
 }
 
-// NewIpLimiter ip限流器，数据缓存在redis中，可选一个string参数作为限流器唯一ID（尽量选接口路由），否则使用UUID生成
+// NewIpLimiter ip限流器，数据缓存在redis中，可选一个string参数作为限流器唯一ID，否则使用UUID生成
 func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) Limiter {
 	var u string
 	if len(args) > 0 {
