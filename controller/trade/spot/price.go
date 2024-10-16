@@ -16,14 +16,14 @@ func (p Price) V1(c *gin.Context) {
 	err := ex.SyncRequests(&inter)
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: dataType.WrongBody, Message: err.Error(),
+			Code: dataType.ReqExchangeFailed, Message: err.Error(),
 		})
 		return
 	}
 	result, err := inter.GetResult()
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: dataType.Unknown, Message: err.Error(),
+			Code: dataType.ExchangeResultFailed, Message: err.Error(),
 		})
 		return
 	}

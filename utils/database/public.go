@@ -70,9 +70,9 @@ func init() {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	if err := sqlDB.Ping(); err != nil {
-		loguru.Logger.Infof("Failed to ping database: %s", err.Error())
+		loguru.SimpleLog(loguru.Fatal, "DATABASE", "Failed to ping database: "+err.Error())
 	} else {
-		loguru.Logger.Info("Successfully connected to the database")
+		loguru.SimpleLog(loguru.Info, "DATABASE", "Successfully connected to the database")
 	}
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Conf.Redis.Host, config.Conf.Redis.Port),
@@ -82,9 +82,9 @@ func init() {
 	})
 	resp := rdb.Ping(context.Background())
 	if err := resp.Err(); err != nil {
-		loguru.Logger.Errorf("Failed to ping redis: %s", err.Error())
+		loguru.SimpleLog(loguru.Fatal, "DATABASE", "Failed to ping redis: "+err.Error())
 	} else {
-		loguru.Logger.Info("Successfully connected to redis")
+		loguru.SimpleLog(loguru.Info, "DATABASE", "Successfully connected to the redis")
 	}
 	Rdb = rdb
 }

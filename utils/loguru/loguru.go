@@ -11,6 +11,16 @@ import (
 var Logger *logrus.Logger
 var DbLogger *logrus.Logger
 
+const (
+	Panic = logrus.PanicLevel
+	Fatal = logrus.FatalLevel
+	Error = logrus.ErrorLevel
+	Warn  = logrus.WarnLevel
+	Info  = logrus.InfoLevel
+	Debug = logrus.DebugLevel
+	Trace = logrus.TraceLevel
+)
+
 type myFormatter struct {
 }
 
@@ -62,5 +72,10 @@ func init() {
 			Level:     logrus.Level(level),
 		}
 	}
-	Logger.Infof("logrus configurate as %s", logrus.Level(level))
+	SimpleLog(Info, "SYSTEM", fmt.Sprintf("logrus configurate as %s", logrus.Level(level)))
+}
+
+// SimpleLog 简易分类日志
+func SimpleLog(level logrus.Level, type_ string, message string) {
+	Logger.Log(level, fmt.Sprintf("[%s] | %s", type_, message))
 }

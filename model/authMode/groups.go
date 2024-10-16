@@ -1,4 +1,4 @@
-package permissionMode
+package authMode
 
 import "ginWeb/model"
 

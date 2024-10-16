@@ -21,3 +21,8 @@ const (
 	UserLimited        = 10012
 	DeniedByPermission = 10013
 )
+
+const (
+	ReqExchangeFailed    = 20001
+	ExchangeResultFailed = 20002
+)

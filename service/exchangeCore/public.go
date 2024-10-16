@@ -14,6 +14,9 @@ type TradeType uint8
 
 type TradeStrategy uint8
 
+// StableSymbol 稳定币
+var StableSymbol []string
+
 // 持仓方向
 const (
 	Both PositionType = iota
@@ -39,7 +42,9 @@ const (
 
 // 交易方式
 const (
+	// MARKET 市价单
 	MARKET TradeType = iota
+	// LIMIT 限价单
 	LIMIT
 )
 
@@ -120,6 +125,7 @@ type CoreConfig struct {
 	PositionSide map[string]bool
 }
 
+// BaseBalance 基本资金类型
 type BaseBalance interface {
 	Add(amount decimal.Decimal) bool
 	Sub(amount decimal.Decimal) bool
@@ -172,4 +178,8 @@ type SwapPosition struct {
 	Quantity        decimal.Decimal `json:"quantity"`
 	BreakEventPrice decimal.Decimal `json:"breakEventPrice"`
 	PositionSide    PositionType    `json:"positionSide"`
+}
+
+func init() {
+	StableSymbol = []string{"USDT", "USDC"}
 }

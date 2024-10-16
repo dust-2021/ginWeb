@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"ginWeb/service/scheduler"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
@@ -48,32 +49,32 @@ func init() {
 	// 添加限流器reset的定时任务
 	limiterContainer = &[]Limiter{}
 	_, err := scheduler.App.AddFunc("0 * * * * *", func() {
-		loguru.Logger.Debugf("limiter minute period resetting. limiter count: %d", len(*limiterContainer))
+		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter minute period resetting. limiter count: %d", len(*limiterContainer)))
 		for _, v := range *limiterContainer {
 			go v.Reset(MinuteP)
 		}
 	})
 	if err != nil {
-		loguru.Logger.Fatal(err)
+		loguru.SimpleLog(loguru.Fatal, "LIMITER", err.Error())
 	}
 
 	_, err = scheduler.App.AddFunc("0 0 * * * *", func() {
-		loguru.Logger.Debugf("limiter hour period resetting. limiter count: %d", len(*limiterContainer))
+		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter hour period resetting. limiter count: %d", len(*limiterContainer)))
 		for _, v := range *limiterContainer {
 			go v.Reset(HourP)
 		}
 	})
 	if err != nil {
-		loguru.Logger.Fatal(err)
+		loguru.SimpleLog(loguru.Fatal, "LIMITER", err.Error())
 	}
 
 	_, err = scheduler.App.AddFunc("0 0 0 * * *", func() {
-		loguru.Logger.Debugf("limiter day period resetting. limiter count: %d", len(*limiterContainer))
+		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter day period resetting. limiter count: %d", len(*limiterContainer)))
 		for _, v := range *limiterContainer {
 			go v.Reset(DayP)
 		}
 	})
 	if err != nil {
-		loguru.Logger.Fatal(err)
+		loguru.SimpleLog(loguru.Fatal, "LIMITER", err.Error())
 	}
 }

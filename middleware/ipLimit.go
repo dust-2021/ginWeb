@@ -13,6 +13,8 @@ import (
 
 var namespace = "IPLimiter"
 
+var existedUuid []string
+
 type ipLimiter struct {
 	uuid     string
 	minuteLm uint32
@@ -28,11 +30,11 @@ func (i *ipLimiter) Reset(p PeriodType) {
 	ctx := context.Background()
 	resp := database.Rdb.Keys(ctx, fmt.Sprintf("::%s::%s::%s*", namespace, i.uuid, p.String()))
 	if resp.Err() != nil {
-		loguru.Logger.Error("ipLimiter reset err:" + resp.Err().Error())
+		loguru.SimpleLog(loguru.Error, "LIMITER", "ipLimiter reset err:"+resp.Err().Error())
 	}
 	keys, err := resp.Result()
 	if err != nil {
-		loguru.Logger.Error("ipLimiter reset err:" + err.Error())
+		loguru.SimpleLog(loguru.Error, "LIMITER", "ipLimiter reset err:"+err.Error())
 	}
 	for _, key := range keys {
 		go database.Rdb.Del(ctx, key)
@@ -78,9 +80,15 @@ func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) Limite
 	} else {
 		uid, err := uuid.NewUUID()
 		if err != nil {
-			loguru.Logger.Fatal("create ipLimiter uuid failed")
+			loguru.SimpleLog(loguru.Fatal, "LIMITER", "create ipLimiter uuid failed")
 		}
 		u = uid.String()
+	}
+	// 判断是否已存在同名uuid
+	for _, v := range existedUuid {
+		if v == u {
+			loguru.SimpleLog(loguru.Fatal, "LIMITER", "duplicate ipLimiter uuid:"+v)
+		}
 	}
 	limiter := &ipLimiter{
 		uuid:     u,
@@ -90,4 +98,8 @@ func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) Limite
 	}
 	*limiterContainer = append(*limiterContainer, limiter)
 	return limiter
+}
+
+func init() {
+	existedUuid = []string{}
 }

@@ -28,11 +28,11 @@ type ExAccount struct {
 }
 
 // SetLeverage 修改杠杆
-func (receiver *ExAccount) SetLeverage(symbol string, leverage uint8) error {
-	pos, f := receiver.Position[symbol]
+func (e *ExAccount) SetLeverage(symbol string, leverage uint8) error {
+	pos, f := e.Position[symbol]
 	// 未初始化
 	if !f {
-		receiver.Config.Leverage[symbol] = leverage
+		e.Config.Leverage[symbol] = leverage
 		return nil
 	}
 	withPos := false
@@ -44,13 +44,13 @@ func (receiver *ExAccount) SetLeverage(symbol string, leverage uint8) error {
 	}
 	// 无仓位
 	if !withPos {
-		receiver.Config.Leverage[symbol] = leverage
+		e.Config.Leverage[symbol] = leverage
 		return nil
 	}
 
-	if leverage < receiver.Config.Leverage[symbol] {
+	if leverage < e.Config.Leverage[symbol] {
 		return fmt.Errorf("leverage must be greater than the current leverage")
-	} else if leverage == receiver.Config.Leverage[symbol] {
+	} else if leverage == e.Config.Leverage[symbol] {
 		return nil
 	}
 
@@ -59,28 +59,28 @@ func (receiver *ExAccount) SetLeverage(symbol string, leverage uint8) error {
 }
 
 // Transfer 划转 仅支持资金、现货和合约之间划转
-func (receiver *ExAccount) Transfer(symbol string, type_ TransferType, amount decimal.Decimal) error {
+func (e *ExAccount) Transfer(symbol string, type_ TransferType, amount decimal.Decimal) error {
 	var from BaseBalance
 	var to BaseBalance
 	switch type_ {
 	case MainBalance:
-		from, _ = receiver.SpotBalance[symbol]
-		to, _ = receiver.Balance[symbol]
+		from, _ = e.SpotBalance[symbol]
+		to, _ = e.Balance[symbol]
 	case MainFuture:
-		from, _ = receiver.SpotBalance[symbol]
-		to, _ = receiver.SwapBalance[symbol]
+		from, _ = e.SpotBalance[symbol]
+		to, _ = e.SwapBalance[symbol]
 	case BalanceMain:
-		from, _ = receiver.Balance[symbol]
-		to, _ = receiver.SpotBalance[symbol]
+		from, _ = e.Balance[symbol]
+		to, _ = e.SpotBalance[symbol]
 	case BalanceFuture:
-		from, _ = receiver.Balance[symbol]
-		to, _ = receiver.SwapBalance[symbol]
+		from, _ = e.Balance[symbol]
+		to, _ = e.SwapBalance[symbol]
 	case FutureMain:
-		from, _ = receiver.SwapBalance[symbol]
-		to, _ = receiver.SpotBalance[symbol]
+		from, _ = e.SwapBalance[symbol]
+		to, _ = e.SpotBalance[symbol]
 	case FutureBalance:
-		from, _ = receiver.SwapBalance[symbol]
-		to, _ = receiver.SpotBalance[symbol]
+		from, _ = e.SwapBalance[symbol]
+		to, _ = e.SpotBalance[symbol]
 	default:
 		return errors.New("not support transfer type")
 	}
@@ -89,5 +89,9 @@ func (receiver *ExAccount) Transfer(symbol string, type_ TransferType, amount de
 		return errors.New("transfer amount not enough")
 	}
 	to.Add(amount)
+	return nil
+}
+
+func (e *ExAccount) Cancellation() (err error) {
 	return nil
 }

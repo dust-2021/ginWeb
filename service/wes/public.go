@@ -31,10 +31,11 @@ type payload struct {
 
 // ws格式化日志
 func handleLog(code int, ip string, method string, data string, cost time.Duration) {
+	info := fmt.Sprintf("%5d | %8s | %20s | %10s | %v", code, cost.String(), ip, method, data)
 	if code == 0 {
-		loguru.Logger.Infof(" [WS] | %5d | %8s | %20s | %10s | %v", code, cost.String(), ip, method, data)
+		loguru.SimpleLog(loguru.Info, "WS", info)
 	} else {
-		loguru.Logger.Errorf(" [WS] | %5d | %8s | %20s | %10s | %v", code, cost.String(), ip, method, data)
+		loguru.SimpleLog(loguru.Error, "WS", info)
 	}
 
 }
@@ -102,7 +103,7 @@ func (w *WContext) handle() {
 
 			// 设置响应错误失败，日志记录异常
 			if sendErr != nil {
-				loguru.Logger.Errorf("ws send error: %s", sendErr.Error())
+				loguru.SimpleLog(loguru.Error, "WS", "ws send error: "+sendErr.Error())
 			}
 			c <- struct{}{}
 		}()
@@ -164,7 +165,7 @@ var upper = &websocket.Upgrader{
 		return true
 	},
 	Error: func(w http.ResponseWriter, r *http.Request, status int, reason error) {
-		loguru.Logger.Errorf("wes from %s error: %s", r.RemoteAddr, reason.Error())
+		loguru.SimpleLog(loguru.Error, "WS", fmt.Sprintf("wes from %s error: %s", r.RemoteAddr, reason.Error()))
 	},
 }
 
@@ -189,7 +190,7 @@ func UpgradeConn(c *gin.Context) {
 			_ = conn.WriteMessage(t, data)
 			err := conn.Close()
 			if err != nil {
-				loguru.Logger.Errorf("close failed %s", err.Error())
+				loguru.SimpleLog(loguru.Error, "WS", "close failed: "+err.Error())
 			}
 			break
 		}

@@ -2,7 +2,7 @@ package perm
 
 import (
 	"ginWeb/middleware"
-	"ginWeb/model/permissionMode"
+	"ginWeb/model/authMode"
 	"ginWeb/model/systemMode"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/database"
@@ -27,7 +27,7 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 		})
 		return
 	}
-	var existed permissionMode.UserRole
+	var existed authMode.UserRole
 	database.Db.Where("role_id = ? and user_id = ?", data.GrantId, data.ToId).First(&existed)
 	if existed.Id != 0 {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
@@ -35,7 +35,7 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 		})
 		return
 	}
-	var role permissionMode.Role
+	var role authMode.Role
 	var user systemMode.User
 	resp := database.Db.Where("id = ?", data.GrantId).First(&role)
 	if resp.Error != nil {
@@ -51,7 +51,7 @@ func (g Grant) RoleToUser(ctx *gin.Context) {
 		})
 		return
 	}
-	rec := permissionMode.UserRole{
+	rec := authMode.UserRole{
 		UserId: data.ToId,
 		RoleId: data.GrantId,
 	}
@@ -76,7 +76,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 		})
 		return
 	}
-	var existed permissionMode.UserGroup
+	var existed authMode.UserGroup
 	database.Db.Where("group_id = ? and user_id = ?", data.GrantId, data.ToId).First(&existed)
 	if existed.Id != 0 {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
@@ -84,7 +84,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 		})
 		return
 	}
-	var group permissionMode.Group
+	var group authMode.Group
 	var user systemMode.User
 	resp := database.Db.Where("id = ?", data.GrantId).First(&group)
 	if resp.Error != nil {
@@ -100,7 +100,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 		})
 		return
 	}
-	resp = database.Db.Create(&permissionMode.UserGroup{
+	resp = database.Db.Create(&authMode.UserGroup{
 		UserId:  data.ToId,
 		GroupId: data.GrantId,
 	})

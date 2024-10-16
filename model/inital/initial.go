@@ -1,9 +1,10 @@
 package inital
 
 import (
+	"fmt"
 	"ginWeb/config"
 	"ginWeb/model"
-	"ginWeb/model/permissionMode"
+	"ginWeb/model/authMode"
 	"ginWeb/model/systemMode"
 	"ginWeb/utils/auth"
 	"ginWeb/utils/database"
@@ -13,16 +14,17 @@ import (
 // InitializeMode 初始化数据表，创建管理员账号和权限
 func InitializeMode() {
 	db := database.Db
-	err := db.Set("gorm:table_options", "charset=utf8mb4").AutoMigrate(&systemMode.User{}, &permissionMode.Permissions{},
-		&permissionMode.Group{}, &permissionMode.UserGroup{}, &permissionMode.GroupPermission{},
-		&permissionMode.Role{}, &permissionMode.UserRole{}, &permissionMode.RolePermission{},
+	// 设置字符集，默认字符集不是utf8
+	err := db.Set("gorm:table_options", "charset=utf8mb4").AutoMigrate(&systemMode.User{}, &authMode.Permissions{},
+		&authMode.Group{}, &authMode.UserGroup{}, &authMode.GroupPermission{},
+		&authMode.Role{}, &authMode.UserRole{}, &authMode.RolePermission{},
 	)
 	if err != nil {
-		loguru.Logger.Fatalf("create table failed %s", err.Error())
+		loguru.SimpleLog(loguru.Fatal, "SYSTEM", fmt.Sprintf("create table failed %s", err.Error()))
 	}
 	hashPwd, err := auth.HashPassword(config.Conf.Server.AdminUser.Password)
 	if err != nil {
-		loguru.Logger.Fatalf("init admin user failed %s", err.Error())
+		loguru.SimpleLog(loguru.Warn, "SYSTEM", fmt.Sprintf("init admin user failed %s", err.Error()))
 	}
 	user := systemMode.User{
 		BaseModel: model.BaseModel{
@@ -32,14 +34,14 @@ func InitializeMode() {
 		Email:        config.Conf.Server.AdminUser.Email,
 		PasswordHash: hashPwd,
 	}
-	role := permissionMode.Role{
+	role := authMode.Role{
 		BaseModel: model.BaseModel{
 			Id: 1,
 		},
 		RoleName:    "admin",
 		Description: "系统管理员",
 	}
-	perm := permissionMode.Permissions{
+	perm := authMode.Permissions{
 		BaseModel: model.BaseModel{
 			Id: 1,
 		},
@@ -48,15 +50,15 @@ func InitializeMode() {
 	}
 	resp := db.Create(&user)
 	if resp.Error != nil {
-		loguru.Logger.Warnf("init admin user failed %s", resp.Error.Error())
+		loguru.SimpleLog(loguru.Warn, "SYSTEM", fmt.Sprintf("init admin user failed %s", resp.Error.Error()))
 	}
 	resp = db.Create(&role)
 	if resp.Error != nil {
-		loguru.Logger.Warnf("init admin role failed %s", resp.Error.Error())
+		loguru.SimpleLog(loguru.Warn, "SYSTEM", fmt.Sprintf("init admin role failed %s", resp.Error.Error()))
 	}
 	resp = db.Create(&perm)
 	if resp.Error != nil {
-		loguru.Logger.Warnf("init admin permission failed %s", resp.Error.Error())
+		loguru.SimpleLog(loguru.Warn, "SYSTEM", fmt.Sprintf("init admin user permission %s", resp.Error.Error()))
 	}
 	if err != nil {
 		return

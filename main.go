@@ -21,7 +21,7 @@ func application() *gin.Engine {
 	}
 	g := gin.New()
 	g.Use(gin.Recovery())
-
+	// 日志中间件
 	ginLogConf := gin.LoggerConfig{
 		Output: loguru.Logger.Writer(),
 		Formatter: func(param gin.LogFormatterParams) string {

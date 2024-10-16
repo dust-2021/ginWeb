@@ -40,6 +40,9 @@ func (s *SpotPrice) SetResult(resp []byte, err error) {
 }
 
 func (s *SpotPrice) GetResult() (map[string]decimal.Decimal, error) {
+	if s.result.Error != nil {
+		return nil, s.result.Error
+	}
 	var resp spotPriceResp
 	err := json.Unmarshal(s.result.Data, &resp)
 	if err != nil {
