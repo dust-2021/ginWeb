@@ -4,16 +4,16 @@ import (
 	"ginWeb/controller/perm"
 	"ginWeb/controller/trade"
 	"ginWeb/controller/trade/spot"
-	"ginWeb/middleware"
+	"ginWeb/controller/ws"
+	"ginWeb/middleware/ginMiddle"
+	"ginWeb/middleware/wsMiddle"
 	"ginWeb/service/wes"
 	"github.com/gin-gonic/gin"
 )
 import "ginWeb/controller/auth"
 
 // InitRoute 注册路由函数
-func InitRoute(g *gin.Engine) error {
-	// websocket
-	g.Handle("GET", "/ws", middleware.NewLoginStatus().Handle, wes.UpgradeConn)
+func InitRoute(g *gin.Engine) {
 
 	// 开放api组
 	api := g.Group("/api")
@@ -21,7 +21,7 @@ func InitRoute(g *gin.Engine) error {
 
 	// 带token验证的api组
 	sapi := g.Group("/sapi")
-	sapi.Use(middleware.NewLoginStatus().Handle)
+	sapi.Use(ginMiddle.NewLoginStatus().Handle)
 	controller.Logout{}.RegisterRoute("/logout", sapi)
 	controller.FreshToken{}.RegisterRoute("/freshToken", sapi)
 
@@ -36,9 +36,15 @@ func InitRoute(g *gin.Engine) error {
 	// binance接口
 	binance := tradeApi.Group("/binance")
 	spot.Price{}.RegisterRoute("/api/v3/ticker/price", binance)
-	return nil
 }
 
-func InitWs() {
-
+// InitWs 注册ws处理逻辑
+func InitWs(g *gin.Engine) {
+	// websocket
+	g.Handle("GET", "/ws", ginMiddle.NewIpLimiter(10, 0, 0, "ws").Handle, wes.UpgradeConn)
+	wes.RegisterHandler("login", ws.Login)
+	wes.RegisterHandler("hello", ws.Hello)
+	wes.RegisterHandler("refresh", ws.Refresh)
+	wes.RegisterHandler("time", ws.ServerTime)
+	wes.RegisterHandler("logout", wsMiddle.LoginCheck, ws.Logout)
 }

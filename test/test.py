@@ -1,5 +1,7 @@
 import asyncio
 import json
+import time
+import datetime
 
 import aiohttp
 
@@ -18,20 +20,32 @@ async def main():
 
     session = aiohttp.ClientSession()
 
-    ws = await session.ws_connect('ws://127.0.0.1:8000/ws', headers={
-        "Token": await login(session),})
+    ws = await session.ws_connect('ws://127.0.0.1:8000/ws')
     data = {
-        "id": "1",
-        "method": "hello",
+        "id": "0",
+        "method": "login",
         "params": [
-
+            "13900004990",
+            "123456"
         ]
     }
     await ws.send_str(json.dumps(data))
-    data = await ws.receive(5)
+    data = await ws.receive(20)
     print(data.data)
-    await ws.ping()
+    # await ws.ping('ping'.encode())
+    # resp = await ws.receive(10)
+    # print(resp.data)
+    # await asyncio.sleep(62)
 
+    data = {
+        "id": "1",
+        "method": "time",
+        "params": []
+    }
+    await ws.send_str(json.dumps(data))
+    resp = await ws.receive()
+    info = json.loads(resp.data)
+    print(datetime.datetime.fromtimestamp(info['data'] / 1000))
     await ws.close()
     await session.close()
 

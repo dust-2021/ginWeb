@@ -1,8 +1,9 @@
-package middleware
+package ginMiddle
 
 import (
 	"context"
 	"fmt"
+	"ginWeb/middleware"
 	reCache "ginWeb/service/cache"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/database"
@@ -22,11 +23,11 @@ type ipLimiter struct {
 	dayLm    uint32
 }
 
-func (i *ipLimiter) key(p PeriodType, ip string) string {
+func (i *ipLimiter) key(p middleware.PeriodType, ip string) string {
 	return fmt.Sprintf("%s::%s::%s", i.uuid, p.String(), ip)
 }
 
-func (i *ipLimiter) Reset(p PeriodType) {
+func (i *ipLimiter) Reset(p middleware.PeriodType) {
 	ctx := context.Background()
 	resp := database.Rdb.Keys(ctx, fmt.Sprintf("::%s::%s::%s*", namespace, i.uuid, p.String()))
 	if resp.Err() != nil {
@@ -43,21 +44,21 @@ func (i *ipLimiter) Reset(p PeriodType) {
 
 func (i *ipLimiter) Handle(c *gin.Context) {
 	ip := c.ClientIP()
-	countM, err := reCache.Incr(namespace, i.key(MinuteP, ip))
+	countM, err := reCache.Incr(namespace, i.key(middleware.MinuteP, ip))
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code: dataType.Unknown, Message: "limiter failed",
 		})
 		return
 	}
-	countH, err := reCache.Incr(namespace, i.key(HourP, ip))
+	countH, err := reCache.Incr(namespace, i.key(middleware.HourP, ip))
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code: dataType.Unknown, Message: "limiter failed",
 		})
 		return
 	}
-	countD, err := reCache.Incr(namespace, i.key(DayP, ip))
+	countD, err := reCache.Incr(namespace, i.key(middleware.DayP, ip))
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code: dataType.Unknown, Message: "limiter failed",
@@ -73,7 +74,7 @@ func (i *ipLimiter) Handle(c *gin.Context) {
 }
 
 // NewIpLimiter ip限流器，数据缓存在redis中，可选一个string参数作为限流器唯一ID，否则使用UUID生成
-func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) Limiter {
+func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) middleware.Limiter {
 	var u string
 	if len(args) > 0 {
 		u = args[0]
@@ -96,7 +97,7 @@ func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) Limite
 		hourLm:   hour,
 		dayLm:    day,
 	}
-	*limiterContainer = append(*limiterContainer, limiter)
+	*middleware.LimiterContainer = append(*middleware.LimiterContainer, limiter)
 	return limiter
 }
 

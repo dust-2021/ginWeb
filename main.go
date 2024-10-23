@@ -37,7 +37,8 @@ func application() *gin.Engine {
 	}
 	g.Use(gin.LoggerWithConfig(ginLogConf))
 	// 注册路由
-	_ = route.InitRoute(g)
+	route.InitRoute(g)
+	route.InitWs(g)
 	return g
 }
 

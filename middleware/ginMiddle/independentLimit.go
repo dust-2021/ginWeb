@@ -1,7 +1,8 @@
-package middleware
+package ginMiddle
 
 import (
 	"fmt"
+	"ginWeb/middleware"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
@@ -18,15 +19,15 @@ type independentLimiter struct {
 	DayLm    uint32
 }
 
-func (r *independentLimiter) Reset(p PeriodType) {
+func (r *independentLimiter) Reset(p middleware.PeriodType) {
 	switch p {
-	case MinuteP:
+	case middleware.MinuteP:
 		atomic.StoreUint32(&r.minute, 0)
-	case HourP:
+	case middleware.HourP:
 		atomic.StoreUint32(&r.hour, 0)
-	case DayP:
+	case middleware.DayP:
 		atomic.StoreUint32(&r.day, 0)
-	case All:
+	case middleware.All:
 		atomic.StoreUint32(&r.minute, 0)
 		atomic.StoreUint32(&r.hour, 0)
 		atomic.StoreUint32(&r.day, 0)
@@ -67,8 +68,8 @@ type rollingIndependentLimiter struct {
 	Limit          uint32
 }
 
-func (r *rollingIndependentLimiter) Reset(p PeriodType) {
-	if p == MinuteP || p == All {
+func (r *rollingIndependentLimiter) Reset(p middleware.PeriodType) {
+	if p == middleware.MinuteP || p == middleware.All {
 
 		// 不必验证修改期间是否被修改
 		//for {
@@ -100,22 +101,22 @@ func (r *rollingIndependentLimiter) Handle(c *gin.Context) {
 }
 
 // NewIndependentLimiter 定时reset的限流器，不同实例间单独计算
-func NewIndependentLimiter(minute uint32, hour uint32, day uint32) Limiter {
+func NewIndependentLimiter(minute uint32, hour uint32, day uint32) middleware.Limiter {
 	limiter := &independentLimiter{
 		MinuteLm: minute,
 		HourLm:   hour,
 		DayLm:    day,
 	}
-	*limiterContainer = append(*limiterContainer, limiter)
+	*middleware.LimiterContainer = append(*middleware.LimiterContainer, limiter)
 	return limiter
 }
 
 // NewRollingIndependentLimiter 每分钟减少计数的限流器，不同实例单独计算
-func NewRollingIndependentLimiter(minuteReduce uint32, limit uint32) Limiter {
+func NewRollingIndependentLimiter(minuteReduce uint32, limit uint32) middleware.Limiter {
 	limiter := &rollingIndependentLimiter{
 		ReduceInMinute: minuteReduce,
 		Limit:          limit,
 	}
-	*limiterContainer = append(*limiterContainer, limiter)
+	*middleware.LimiterContainer = append(*middleware.LimiterContainer, limiter)
 	return limiter
 }

@@ -1,6 +1,7 @@
-package middleware
+package ginMiddle
 
 import (
+	"ginWeb/middleware"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/auth"
 	"github.com/gin-gonic/gin"
@@ -88,7 +89,7 @@ func (p *permission) Handle(c *gin.Context) {
 }
 
 // NewPermission 对比token中存储的权限是否足够，需要前置loginStatus中间件
-func NewPermission(perms []string, choice ...[]string) Middleware {
+func NewPermission(perms []string, choice ...[]string) middleware.Middleware {
 	per := &permission{
 		Permission:       perms,
 		SelectPermission: choice,

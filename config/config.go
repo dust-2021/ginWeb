@@ -8,14 +8,17 @@ import (
 
 type Config struct {
 	Server struct {
-		NodeId       uint8  `yaml:"nodeId"`       // 分布式节点ID
-		Port         uint16 `yaml:"port"`         // 端口
-		Secret       string `yaml:"secret"`       // 加密密钥
-		Debug        bool   `yaml:"debug"`        //
-		TokenEncrypt bool   `yaml:"tokenEncrypt"` // token是加密或签名
-		TokenSize    int    `yaml:"tokenSize"`    // token最大长度
-		TokenExpire  int    `yaml:"tokenExpire"`  // token过期时间
-		Logger       struct {
+		NodeId          uint8  `yaml:"nodeId"`          // 分布式节点ID
+		Port            uint16 `yaml:"port"`            // 端口
+		Secret          string `yaml:"secret"`          // 加密密钥
+		Debug           bool   `yaml:"debug"`           //
+		TokenEncrypt    bool   `yaml:"tokenEncrypt"`    // token是加密或签名
+		TokenSize       int    `yaml:"tokenSize"`       // token最大长度
+		TokenExpire     int    `yaml:"tokenExpire"`     // token过期时间
+		WsLifeTime      uint32 `yaml:"wsLifeTime"`      // ws连接生命周期
+		WsTaskTimeout   uint32 `yaml:"wsTaskTimeout"`   // ws处理超时
+		WsLoginLifetime uint32 `yaml:"wsLoginLifetime"` // ws登录有效时间
+		Logger          struct {
 			Path  string `yaml:"path"`  // 日志文件位置
 			Level string `yaml:"level"` // 日志等级
 		}

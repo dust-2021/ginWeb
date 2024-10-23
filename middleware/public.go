@@ -42,15 +42,15 @@ type Limiter interface {
 	Handle(*gin.Context)
 }
 
-// 所有已生成的限流器
-var limiterContainer *[]Limiter
+// LimiterContainer 所有已生成的限流器
+var LimiterContainer *[]Limiter
 
 func init() {
 	// 添加限流器reset的定时任务
-	limiterContainer = &[]Limiter{}
+	LimiterContainer = &[]Limiter{}
 	_, err := scheduler.App.AddFunc("0 * * * * *", func() {
-		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter minute period resetting. limiter count: %d", len(*limiterContainer)))
-		for _, v := range *limiterContainer {
+		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter minute period resetting. limiter count: %d", len(*LimiterContainer)))
+		for _, v := range *LimiterContainer {
 			go v.Reset(MinuteP)
 		}
 	})
@@ -59,8 +59,8 @@ func init() {
 	}
 
 	_, err = scheduler.App.AddFunc("0 0 * * * *", func() {
-		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter hour period resetting. limiter count: %d", len(*limiterContainer)))
-		for _, v := range *limiterContainer {
+		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter hour period resetting. limiter count: %d", len(*LimiterContainer)))
+		for _, v := range *LimiterContainer {
 			go v.Reset(HourP)
 		}
 	})
@@ -69,8 +69,8 @@ func init() {
 	}
 
 	_, err = scheduler.App.AddFunc("0 0 0 * * *", func() {
-		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter day period resetting. limiter count: %d", len(*limiterContainer)))
-		for _, v := range *limiterContainer {
+		loguru.SimpleLog(loguru.Debug, "LIMITER", fmt.Sprintf("limiter day period resetting. limiter count: %d", len(*LimiterContainer)))
+		for _, v := range *LimiterContainer {
 			go v.Reset(DayP)
 		}
 	})
