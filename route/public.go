@@ -44,7 +44,6 @@ func InitWs(g *gin.Engine) {
 	g.Handle("GET", "/ws", ginMiddle.NewIpLimiter(10, 0, 0, "ws").Handle, wes.UpgradeConn)
 	wes.RegisterHandler("login", ws.Login)
 	wes.RegisterHandler("hello", ws.Hello)
-	wes.RegisterHandler("refresh", ws.Refresh)
 	wes.RegisterHandler("time", ws.ServerTime)
 	wes.RegisterHandler("logout", wsMiddle.LoginCheck, ws.Logout)
 }

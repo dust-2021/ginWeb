@@ -14,15 +14,11 @@ func Hello(w *wes.WContext) {
 	w.Result(dataType.Success, "hello")
 }
 
-func Refresh(w *wes.WContext) {
-	w.Conn.ResetLifeTime()
-}
-
 func ServerTime(w *wes.WContext) {
-
 	w.Result(dataType.Success, time.Now().UnixMilli())
 }
 
+// Login 保持ws登录状态，时间根据配置设定
 func Login(w *wes.WContext) {
 	if len(w.Request.Params) != 2 {
 		w.Result(dataType.WrongBody, "invalid param")

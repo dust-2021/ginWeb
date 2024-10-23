@@ -32,6 +32,7 @@ async def main():
     await ws.send_str(json.dumps(data))
     data = await ws.receive(20)
     print(data.data)
+    await asyncio.sleep(5)
     # await ws.ping('ping'.encode())
     # resp = await ws.receive(10)
     # print(resp.data)
@@ -39,13 +40,23 @@ async def main():
 
     data = {
         "id": "1",
-        "method": "time",
+        "method": "refresh",
+        "params": []
+    }
+    # await ws.send_str(json.dumps(data))
+    await asyncio.sleep(6)
+    data = {
+        "id": "1",
+        "method": "hello",
         "params": []
     }
     await ws.send_str(json.dumps(data))
-    resp = await ws.receive()
-    info = json.loads(resp.data)
-    print(datetime.datetime.fromtimestamp(info['data'] / 1000))
+    resp = await ws.receive(1)
+    # info = json.loads(resp.data)
+    # if info['statusCode'] != 0:
+    #     print(f"{info['id']} err: {info['data']}")
+    # else:
+    #     print(datetime.datetime.fromtimestamp(info['data'] / 1000))
     await ws.close()
     await session.close()
 

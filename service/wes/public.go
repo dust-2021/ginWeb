@@ -233,8 +233,10 @@ type Connection struct {
 	conn        *websocket.Conn
 	lifetimeCtx *context.Context
 	cancel      context.CancelFunc
-	lock        *sync.Mutex
-	msgChan     chan []byte
+	lock        *sync.RWMutex // 连接读写锁
+	msgChan     chan []byte   // 信息信道
+	heartChan   chan struct{} // 心跳监测信道
+	closed      bool
 	// 登录信息
 	userInfo *userInfo
 }
@@ -248,7 +250,7 @@ func NewConnection(conn *websocket.Conn) *Connection {
 		lifetimeCtx: &ctx,
 		cancel:      cancel,
 		msgChan:     make(chan []byte),
-		lock:        &sync.Mutex{},
+		lock:        &sync.RWMutex{},
 		userInfo:    newUserInfo(),
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
@@ -269,22 +271,23 @@ func (c *Connection) IsLogin() bool {
 	return c.userInfo.status()
 }
 
-// ResetLifeTime 刷新连接生命周期
-func (c *Connection) ResetLifeTime() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	var ctx context.Context
-	ctx, c.cancel = context.WithTimeout(context.Background(), time.Duration(config.Conf.Server.WsLifeTime)*time.Second)
-	c.lifetimeCtx = &ctx
+func (c *Connection) isClose() bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.closed
 }
 
 // 开始接收数据
 func (c *Connection) listen() {
 	for {
-		// 读取失败直接关闭连接
+		if c.isClose() {
+			return
+		}
+		// 读取失败，被动关闭连接
 		type_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			loguru.SimpleLog(loguru.Error, "WS", fmt.Sprintf("close listen from %s by err %s", c.conn.RemoteAddr().String(), err.Error()))
+			c.Disconnect()
 			break
 		}
 		switch type_ {
@@ -306,36 +309,51 @@ func (c *Connection) listen() {
 
 // 开始处理请求
 func (c *Connection) handle() {
-	for {
-		select {
-		// 生命周期结束
-		case <-(*c.lifetimeCtx).Done():
-			loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
-			return
-		case msg := <-c.msgChan:
-			var data payload
-			err := json.Unmarshal(msg, &data)
-			// 错误请求格式
-			if err != nil {
-				msg := fmt.Sprintf("wrong message: %s", string(msg))
-				res, _ := json.Marshal(resp{
-					Id:         "",
-					StatusCode: dataType.WrongBody,
-					Data:       msg,
-				})
-				_ = c.conn.WriteMessage(websocket.TextMessage, res)
-				handleLog(dataType.WrongBody, c.conn.RemoteAddr().String(), "-", msg, 0)
-				continue
-			}
+	select {
+	// 生命周期结束
+	case <-(*c.lifetimeCtx).Done():
+		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
+		return
+	case msg := <-c.msgChan:
+		var data payload
+		err := json.Unmarshal(msg, &data)
+		// 错误请求格式
+		if err != nil {
+			msg := fmt.Sprintf("wrong message: %s", string(msg))
+			res, _ := json.Marshal(resp{
+				Id:         "",
+				StatusCode: dataType.WrongBody,
+				Data:       msg,
+			})
+			_ = c.conn.WriteMessage(websocket.TextMessage, res)
+			handleLog(dataType.WrongBody, c.conn.RemoteAddr().String(), "-", msg, 0)
+		} else {
 			// 单个请求的处理
 			ctx := NewWContext(c, data)
 			go ctx.handle()
 		}
+
 	}
+	go c.handle()
+}
+
+func (c *Connection) heartbeat() {
+	ticker := time.NewTicker(time.Hour)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+
+			}
+		}
+	}()
 }
 
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
+	if c.isClose() {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.conn != nil {
@@ -347,6 +365,7 @@ func (c *Connection) Disconnect() {
 	// 主动取消生命周期上下文
 	c.userInfo.off()
 	c.cancel()
+	c.closed = true
 	loguru.SimpleLog(loguru.Info, "WS", "disconnect from "+c.conn.RemoteAddr().String())
 }
 
