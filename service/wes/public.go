@@ -3,12 +3,14 @@ package wes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"ginWeb/config"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -17,6 +19,7 @@ import (
 // ws处理超时时间
 var handleTimeout = time.Duration(config.Conf.Server.WsTaskTimeout) * time.Second
 var connectionLifeTime = time.Duration(config.Conf.Server.WsLifeTime) * time.Second
+var heartbeat = time.Duration(config.Conf.Server.WsHeartbeat) * time.Second
 
 // ws处理逻辑类型
 type handleFunc func(ctx *WContext)
@@ -78,7 +81,7 @@ func (u *userInfo) on(id int64, permission []string) {
 	go func() {
 		select {
 		case <-u.lifetimeHolder.Done():
-			loguru.SimpleLog(loguru.Info, "WS", "login expire")
+			loguru.SimpleLog(loguru.Debug, "WS", "login expire")
 			u.off()
 		}
 	}()
@@ -235,7 +238,7 @@ type Connection struct {
 	cancel      context.CancelFunc
 	lock        *sync.RWMutex // 连接读写锁
 	msgChan     chan []byte   // 信息信道
-	heartChan   chan struct{} // 心跳监测信道
+	heartChan   chan int64    // 心跳监测信道
 	closed      bool
 	// 登录信息
 	userInfo *userInfo
@@ -257,6 +260,21 @@ func NewConnection(conn *websocket.Conn) *Connection {
 	return c
 }
 
+func (c *Connection) Send(data []byte) error {
+	if c.IsClose() {
+		return errors.New("connection is closed")
+	}
+	err := c.conn.WriteMessage(websocket.TextMessage, data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Connection) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
+}
+
 // Login 连接登录
 func (c *Connection) Login(id int64, permissions []string) {
 	c.userInfo.on(id, permissions)
@@ -271,7 +289,7 @@ func (c *Connection) IsLogin() bool {
 	return c.userInfo.status()
 }
 
-func (c *Connection) isClose() bool {
+func (c *Connection) IsClose() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.closed
@@ -280,13 +298,12 @@ func (c *Connection) isClose() bool {
 // 开始接收数据
 func (c *Connection) listen() {
 	for {
-		if c.isClose() {
-			return
+		if c.IsClose() {
+			break
 		}
 		// 读取失败，被动关闭连接
 		type_, message, err := c.conn.ReadMessage()
 		if err != nil {
-			loguru.SimpleLog(loguru.Error, "WS", fmt.Sprintf("close listen from %s by err %s", c.conn.RemoteAddr().String(), err.Error()))
 			c.Disconnect()
 			break
 		}
@@ -303,8 +320,8 @@ func (c *Connection) listen() {
 		default:
 			continue
 		}
-
 	}
+	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close listen from %s", c.conn.RemoteAddr().String()))
 }
 
 // 开始处理请求
@@ -312,7 +329,8 @@ func (c *Connection) handle() {
 	select {
 	// 生命周期结束
 	case <-(*c.lifetimeCtx).Done():
-		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
+		c.Disconnect()
+		loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
 		return
 	case msg := <-c.msgChan:
 		var data payload
@@ -337,13 +355,40 @@ func (c *Connection) handle() {
 	go c.handle()
 }
 
+// 处理心跳检测返回信息，10秒超时关闭连接
+func (c *Connection) waitHeartbeat(tick int64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for {
+		select {
+		case <-(*c.lifetimeCtx).Done():
+			c.Disconnect()
+			return
+		case t := <-c.heartChan:
+			// 超过十秒或早于发心跳检测则无效
+			if t > tick+10 || t < tick {
+				continue
+			}
+		case <-ctx.Done():
+			loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("heartbeat failed from %s", c.conn.RemoteAddr().String()))
+			c.Disconnect()
+			return
+		}
+	}
+}
+
+// 启动心跳检测
 func (c *Connection) heartbeat() {
-	ticker := time.NewTicker(time.Hour)
+	ticker := time.NewTicker(heartbeat)
 	go func() {
+		defer ticker.Stop()
 		for {
 			select {
-			case <-ticker.C:
-
+			case t := <-ticker.C:
+				_ = c.conn.WriteMessage(websocket.TextMessage, []byte("ping"))
+				go c.waitHeartbeat(t.Unix())
+			case <-(*c.lifetimeCtx).Done():
+				return
 			}
 		}
 	}()
@@ -351,7 +396,7 @@ func (c *Connection) heartbeat() {
 
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
-	if c.isClose() {
+	if c.IsClose() {
 		return
 	}
 	c.lock.Lock()
@@ -392,11 +437,13 @@ func UpgradeConn(c *gin.Context) {
 	// 开启连接的监听和处理函数
 	go connect.listen()
 	go connect.handle()
+	connect.heartbeat()
 }
 
 // RegisterHandler 注册ws处理函数，key已存在则跳过
 func RegisterHandler(key string, f ...handleFunc) {
 	if _, flag := tasks[key]; flag {
+		loguru.Logger.Fatalf("duplicate register ws handler: %s", key)
 		return
 	}
 	var h handler = f

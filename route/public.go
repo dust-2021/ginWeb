@@ -8,7 +8,9 @@ import (
 	"ginWeb/middleware/ginMiddle"
 	"ginWeb/middleware/wsMiddle"
 	"ginWeb/service/wes"
+	"ginWeb/service/wes/subscribe"
 	"github.com/gin-gonic/gin"
+	"time"
 )
 import "ginWeb/controller/auth"
 
@@ -46,4 +48,9 @@ func InitWs(g *gin.Engine) {
 	wes.RegisterHandler("hello", ws.Hello)
 	wes.RegisterHandler("time", ws.ServerTime)
 	wes.RegisterHandler("logout", wsMiddle.LoginCheck, ws.Logout)
+
+	// 注册订阅事件
+	subscribe.NewPeriodPub("hello", time.Second, func() []byte {
+		return []byte("hello")
+	})
 }
