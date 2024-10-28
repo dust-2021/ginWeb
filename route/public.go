@@ -48,9 +48,16 @@ func InitWs(g *gin.Engine) {
 	wes.RegisterHandler("hello", ws.Hello)
 	wes.RegisterHandler("time", ws.ServerTime)
 	wes.RegisterHandler("logout", wsMiddle.LoginCheck, ws.Logout)
+	wes.RegisterHandler("broadcast", ws.Broadcast)
 
 	// 注册订阅事件
-	subscribe.NewPeriodPub("hello", time.Second, func() []byte {
+	subscribe.NewPublisher("hello", "1s", func() []byte {
 		return []byte("hello")
 	})
+	subscribe.NewPublisher("time", "*/2 * * * * *", func() []byte {
+		return []byte(time.Now().Format("2006-01-02 15:04:05.0000"))
+	})
+
+	// 注册频道
+	subscribe.NewPublisher("hall", "")
 }

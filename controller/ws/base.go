@@ -41,7 +41,7 @@ func Login(w *wes.WContext) {
 	result := database.Db.Where("phone = ?", u).Or("email = ?", u).First(&record)
 	pwd, err := auth.HashPassword(p)
 	if result.Error != nil || err != nil || pwd != record.PasswordHash {
-		w.Result(dataType.WrongBody, "invalid username or password")
+		w.Result(dataType.WrongData, "invalid username or password")
 	}
 	// 查询权限
 	permissions, err := model.GetPermissionById(record.Id)
@@ -54,5 +54,23 @@ func Login(w *wes.WContext) {
 
 func Logout(w *wes.WContext) {
 	w.Conn.Logout()
+	w.Result(dataType.Success, "success")
+}
+
+func Broadcast(w *wes.WContext) {
+	if w.Conn.Channel == nil {
+		w.Result(dataType.WrongBody, "channel is nil")
+		return
+	}
+	if len(w.Request.Params) != 1 {
+		w.Result(dataType.WrongBody, "invalid param")
+		return
+	}
+	data, ok := w.Request.Params[0].(string)
+	if !ok {
+		w.Result(dataType.WrongBody, "invalid param")
+		return
+	}
+	w.Conn.Channel.Publish([]byte(data), w.Conn)
 	w.Result(dataType.Success, "success")
 }

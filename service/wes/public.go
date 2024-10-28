@@ -18,12 +18,23 @@ import (
 
 // ws处理超时时间
 var handleTimeout = time.Duration(config.Conf.Server.WsTaskTimeout) * time.Second
+
+// ws连接最大时长
 var connectionLifeTime = time.Duration(config.Conf.Server.WsLifeTime) * time.Second
+
+// ws连接心跳检测周期
 var heartbeat = time.Duration(config.Conf.Server.WsHeartbeat) * time.Second
+
+// Pubs ws已注册订阅事件
+var Pubs = make(map[string]Pub)
+
+// PubsLock 已注册订阅事件读写锁
+var PubsLock = sync.RWMutex{}
 
 // ws处理逻辑类型
 type handleFunc func(ctx *WContext)
 
+// ws已注册处理函数
 type handler []handleFunc
 
 // 已注册的ws处理逻辑
@@ -42,6 +53,18 @@ type resp struct {
 	Id         string      `json:"id"`
 	StatusCode int         `json:"statusCode"`
 	Data       interface{} `json:"data"`
+}
+
+// Pub 事件订阅接口类
+type Pub interface {
+	// Subscribe 订阅该事件
+	Subscribe(connection *Connection)
+	// UnSubscribe 取消订阅
+	UnSubscribe(connection *Connection)
+	// Publish 向收听者发送消息
+	Publish([]byte, *Connection)
+	// Shutdown 关闭事件
+	Shutdown()
 }
 
 func (r *resp) String() string {
@@ -153,7 +176,7 @@ func (w *WContext) returnData() {
 	if flag != nil {
 		handleLog(dataType.WrongData, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "wrong return data", 0)
 	}
-	_ = w.Conn.conn.WriteMessage(websocket.TextMessage, data)
+	_ = w.Conn.Send(data)
 }
 
 func (w *WContext) Abort() {
@@ -233,15 +256,21 @@ var upper = &websocket.Upgrader{
 
 // Connection ws连接对象
 type Connection struct {
-	conn        *websocket.Conn
-	lifetimeCtx *context.Context
-	cancel      context.CancelFunc
-	lock        *sync.RWMutex // 连接读写锁
-	msgChan     chan []byte   // 信息信道
-	heartChan   chan int64    // 心跳监测信道
-	closed      bool
+	conn *websocket.Conn
+	// 生命周期上下文
+	lifetimeCtx  *context.Context
+	cancel       context.CancelFunc
+	lock         *sync.RWMutex // 对象读写锁
+	wsWriterLock *sync.Mutex   // websocket消息写入锁
+	msgChan      chan []byte   // 信息信道
+	heartChan    chan int64    // 心跳监测信道
+	closed       bool
 	// 登录信息
 	userInfo *userInfo
+	// 连接创建时间
+	connectTime time.Time
+	// 连接频道
+	Channel Pub
 }
 
 // NewConnection 新建连接对象
@@ -249,12 +278,15 @@ func NewConnection(conn *websocket.Conn) *Connection {
 	// 创建生命周期管理上下文
 	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
 	c := &Connection{
-		conn:        conn,
-		lifetimeCtx: &ctx,
-		cancel:      cancel,
-		msgChan:     make(chan []byte),
-		lock:        &sync.RWMutex{},
-		userInfo:    newUserInfo(),
+		conn:         conn,
+		lifetimeCtx:  &ctx,
+		cancel:       cancel,
+		msgChan:      make(chan []byte),
+		lock:         &sync.RWMutex{},
+		wsWriterLock: &sync.Mutex{},
+		userInfo:     newUserInfo(),
+		connectTime:  time.Now(),
+		Channel:      nil,
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	return c
@@ -264,6 +296,8 @@ func (c *Connection) Send(data []byte) error {
 	if c.IsClose() {
 		return errors.New("connection is closed")
 	}
+	c.wsWriterLock.Lock()
+	defer c.wsWriterLock.Unlock()
 	err := c.conn.WriteMessage(websocket.TextMessage, data)
 	if err != nil {
 		return err
@@ -326,33 +360,33 @@ func (c *Connection) listen() {
 
 // 开始处理请求
 func (c *Connection) handle() {
-	select {
-	// 生命周期结束
-	case <-(*c.lifetimeCtx).Done():
-		c.Disconnect()
-		loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
-		return
-	case msg := <-c.msgChan:
-		var data payload
-		err := json.Unmarshal(msg, &data)
-		// 错误请求格式
-		if err != nil {
-			msg := fmt.Sprintf("wrong message: %s", string(msg))
-			res, _ := json.Marshal(resp{
-				Id:         "",
-				StatusCode: dataType.WrongBody,
-				Data:       msg,
-			})
-			_ = c.conn.WriteMessage(websocket.TextMessage, res)
-			handleLog(dataType.WrongBody, c.conn.RemoteAddr().String(), "-", msg, 0)
-		} else {
-			// 单个请求的处理
-			ctx := NewWContext(c, data)
-			go ctx.handle()
+	for {
+		select {
+		// 生命周期结束
+		case <-(*c.lifetimeCtx).Done():
+			c.Disconnect()
+			loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
+			return
+		case msg := <-c.msgChan:
+			var data payload
+			err := json.Unmarshal(msg, &data)
+			// 错误请求格式
+			if err != nil {
+				msg := fmt.Sprintf("wrong message: %s", string(msg))
+				res, _ := json.Marshal(resp{
+					Id:         "",
+					StatusCode: dataType.WrongBody,
+					Data:       msg,
+				})
+				_ = c.Send(res)
+				handleLog(dataType.WrongBody, c.conn.RemoteAddr().String(), "-", msg, 0)
+			} else {
+				// 单个请求的处理
+				ctx := NewWContext(c, data)
+				go ctx.handle()
+			}
 		}
-
 	}
-	go c.handle()
 }
 
 // 处理心跳检测返回信息，10秒超时关闭连接
@@ -401,6 +435,9 @@ func (c *Connection) Disconnect() {
 	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	if c.Channel != nil {
+		c.Channel.UnSubscribe(c)
+	}
 	if c.conn != nil {
 		err := c.conn.Close()
 		if err != nil {
@@ -411,7 +448,8 @@ func (c *Connection) Disconnect() {
 	c.userInfo.off()
 	c.cancel()
 	c.closed = true
-	loguru.SimpleLog(loguru.Info, "WS", "disconnect from "+c.conn.RemoteAddr().String())
+	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("disconnect from %s, lifetime %s",
+		c.conn.RemoteAddr().String(), time.Now().Sub(c.connectTime).String()))
 }
 
 // UpgradeConn ws路由升级函数
@@ -425,10 +463,23 @@ func UpgradeConn(c *gin.Context) {
 	}
 	// 设置ping响应
 	conn.SetPingHandler(func(appData string) error {
-		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
+		loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
 		return conn.WriteMessage(websocket.TextMessage, []byte("pong"))
 	})
 	connect := NewConnection(conn)
+	wsChan := c.Query("channel")
+	if wsChan != "" {
+		pub, flag := Pubs[wsChan]
+		if flag {
+			connect.Channel = pub
+			pub.Subscribe(connect)
+		} else {
+			c.AbortWithStatusJSON(200, dataType.JsonWrong{
+				Code: dataType.WrongData, Message: "channel not found",
+			})
+			return
+		}
+	}
 	// 设置连接关闭时调用管理对象的Disconnect方法
 	conn.SetCloseHandler(func(code int, text string) error {
 		connect.Disconnect()

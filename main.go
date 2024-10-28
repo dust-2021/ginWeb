@@ -8,6 +8,9 @@ import (
 	"ginWeb/service/scheduler"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
 )
 import "ginWeb/route"
 
@@ -43,6 +46,11 @@ func application() *gin.Engine {
 }
 
 func main() {
+
+	go func() {
+		log.Println(http.ListenAndServe("127.0.0.1:8001", nil))
+	}()
+
 	g := application()
 	// 启动定时器
 	scheduler.App.Start()
