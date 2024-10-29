@@ -47,9 +47,11 @@ func application() *gin.Engine {
 
 func main() {
 
-	go func() {
-		log.Println(http.ListenAndServe("127.0.0.1:8001", nil))
-	}()
+	if config.Conf.Server.Debug {
+		go func() {
+			log.Println(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Conf.Server.Port+1), nil))
+		}()
+	}
 
 	g := application()
 	// 启动定时器

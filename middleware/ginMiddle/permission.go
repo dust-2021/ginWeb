@@ -4,6 +4,7 @@ import (
 	"ginWeb/middleware"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/auth"
+	"ginWeb/utils/tools"
 	"github.com/gin-gonic/gin"
 )
 
@@ -12,53 +13,6 @@ type permission struct {
 	Permission []string
 	// 可选权限，只用包含每个子数组中的一个
 	SelectPermission [][]string
-}
-
-func containsAll(a, b []string) bool {
-	if len(b) == 0 {
-		return true
-	}
-	if len(a) == 0 {
-		return false
-	}
-	elementMap := make(map[string]struct{})
-	for _, v := range a {
-		elementMap[v] = struct{}{}
-	}
-
-	for _, v := range b {
-		if _, found := elementMap[v]; !found {
-			return false
-		}
-	}
-	return true
-}
-
-func containOne(a []string, b [][]string) bool {
-	if len(b) == 0 {
-		return true
-	}
-	if len(a) == 0 {
-		return false
-	}
-	elementMap := make(map[string]struct{})
-	for _, v := range a {
-		elementMap[v] = struct{}{}
-	}
-	for _, v := range b {
-		flag := false
-		for _, v1 := range v {
-			if _, found := elementMap[v1]; found {
-				flag = true
-				break
-			}
-		}
-		// 某个多选一未通过
-		if !flag {
-			return false
-		}
-	}
-	return true
 }
 
 func (p *permission) Handle(c *gin.Context) {
@@ -80,7 +34,7 @@ func (p *permission) Handle(c *gin.Context) {
 		})
 		return
 	}
-	if !(containsAll(token.Permission, p.Permission) && containOne(token.Permission, p.SelectPermission)) {
+	if !(tools.ContainsAll(token.Permission, p.Permission) && tools.ContainOne(token.Permission, p.SelectPermission)) {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: dataType.DeniedByPermission, Message: "permission don't match",
 		})

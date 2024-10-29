@@ -7,7 +7,7 @@ import (
 
 // LoginCheck ws登录验证中间件
 func LoginCheck(w *wes.WContext) {
-	if !w.Conn.IsLogin() {
+	if !w.Conn.LoginStatus() {
 		w.Result(dataType.NoToken, "haven't login")
 	}
 }

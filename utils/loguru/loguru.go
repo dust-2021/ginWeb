@@ -77,5 +77,13 @@ func init() {
 
 // SimpleLog 简易分类日志
 func SimpleLog(level logrus.Level, type_ string, message string) {
-	Logger.Log(level, fmt.Sprintf("[%s] | %s", type_, message))
+	switch level {
+	case logrus.PanicLevel:
+		Logger.Panic(message)
+	case logrus.FatalLevel:
+		Logger.Fatal(message)
+	default:
+		Logger.Log(level, fmt.Sprintf("[%s] | %s", type_, message))
+	}
+
 }

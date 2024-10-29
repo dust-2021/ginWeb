@@ -25,11 +25,21 @@ var connectionLifeTime = time.Duration(config.Conf.Server.WsLifeTime) * time.Sec
 // ws连接心跳检测周期
 var heartbeat = time.Duration(config.Conf.Server.WsHeartbeat) * time.Second
 
+var loginExpire = time.Duration(config.Conf.Server.WsLoginLifetime) * time.Second
+
 // Pubs ws已注册订阅事件
 var Pubs = make(map[string]Pub)
 
 // PubsLock 已注册订阅事件读写锁
 var PubsLock = sync.RWMutex{}
+
+// GetPub 查找订阅事件
+func GetPub(name string) (Pub, bool) {
+	PubsLock.RLock()
+	defer PubsLock.RUnlock()
+	pub, ok := Pubs[name]
+	return pub, ok
+}
 
 // ws处理逻辑类型
 type handleFunc func(ctx *WContext)
@@ -62,73 +72,15 @@ type Pub interface {
 	// UnSubscribe 取消订阅
 	UnSubscribe(connection *Connection)
 	// Publish 向收听者发送消息
-	Publish([]byte, *Connection)
+	Publish(string, *Connection)
+	// Start 启动事件
+	Start(string) error
 	// Shutdown 关闭事件
 	Shutdown()
 }
 
 func (r *resp) String() string {
 	return fmt.Sprintf("id:%s statusCode:%d data:%v", r.Id, r.StatusCode, r.Data)
-}
-
-// 连接中的用户信息
-type userInfo struct {
-	userId         int64
-	permission     []string
-	lifetimeHolder context.Context
-	lock           sync.RWMutex
-	cancel         context.CancelFunc
-}
-
-func newUserInfo() *userInfo {
-	return &userInfo{
-		userId:         0,
-		permission:     make([]string, 0),
-		lifetimeHolder: nil,
-		cancel:         nil,
-		lock:           sync.RWMutex{},
-	}
-}
-
-// 修改为登录状态
-func (u *userInfo) on(id int64, permission []string) {
-	u.lock.Lock()
-	defer u.lock.Unlock()
-	u.permission = permission
-	u.userId = id
-	ctx, f := context.WithTimeout(context.Background(), time.Duration(config.Conf.Server.WsLoginLifetime)*time.Second)
-	u.lifetimeHolder = ctx
-	u.cancel = f
-
-	// 登录超时
-	go func() {
-		select {
-		case <-u.lifetimeHolder.Done():
-			loguru.SimpleLog(loguru.Debug, "WS", "login expire")
-			u.off()
-		}
-	}()
-}
-
-// 修改为未登录状态
-func (u *userInfo) off() {
-	if !u.status() {
-		return
-	}
-
-	u.lock.Lock()
-	defer u.lock.Unlock()
-	u.cancel()
-	u.userId = 0
-	u.permission = make([]string, 0)
-	u.lifetimeHolder = nil
-	u.cancel = nil
-}
-
-func (u *userInfo) status() bool {
-	u.lock.RLock()
-	defer u.lock.RUnlock()
-	return u.userId != 0
 }
 
 // ws格式化日志
@@ -179,6 +131,7 @@ func (w *WContext) returnData() {
 	_ = w.Conn.Send(data)
 }
 
+// Abort 中断处理
 func (w *WContext) Abort() {
 	w.isAbort = true
 }
@@ -197,14 +150,15 @@ func (w *WContext) Set(k string, v interface{}) {
 func (w *WContext) handle() {
 	defer func() {
 		if err := recover(); err != nil {
-			loguru.SimpleLog(loguru.Error, "WS", fmt.Sprintf("panic from ws handle: %s", err))
+			loguru.SimpleLog(loguru.Error, "WS", fmt.Sprintf("panic from ws handle: %v", err))
+			w.Result(dataType.Unknown, err)
 		}
 	}()
 	if funcs, ok := tasks[w.Request.Method]; ok {
 		c := make(chan struct{}, 1)
 
 		// 任务处理计时器
-		timeoutCtx, cf := context.WithTimeout(context.Background(), time.Second*time.Duration(config.Conf.Server.WsTaskTimeout))
+		timeoutCtx, cf := context.WithTimeout(context.Background(), handleTimeout)
 		defer cf()
 		// 执行处理逻辑
 		go func() {
@@ -254,23 +208,32 @@ var upper = &websocket.Upgrader{
 	},
 }
 
+type userInfo struct {
+	userId         int64
+	userName       string
+	permission     []string
+	lifetimeHolder context.Context
+	cancel         context.CancelFunc
+}
+
 // Connection ws连接对象
 type Connection struct {
 	conn *websocket.Conn
 	// 生命周期上下文
-	lifetimeCtx  *context.Context
-	cancel       context.CancelFunc
-	lock         *sync.RWMutex // 对象读写锁
-	wsWriterLock *sync.Mutex   // websocket消息写入锁
-	msgChan      chan []byte   // 信息信道
-	heartChan    chan int64    // 心跳监测信道
-	closed       bool
+	lifetimeCtx *context.Context
+	cancel      context.CancelFunc
+	lock        *sync.RWMutex // 对象读写锁
+	msgChan     chan []byte   // 信息信道
+	heartChan   chan int64    // 心跳监测信道
+	closed      bool
+
+	address net.Addr
 	// 登录信息
-	userInfo *userInfo
+	user *userInfo
 	// 连接创建时间
 	connectTime time.Time
 	// 连接频道
-	Channel Pub
+	channels map[string]Pub
 }
 
 // NewConnection 新建连接对象
@@ -278,26 +241,135 @@ func NewConnection(conn *websocket.Conn) *Connection {
 	// 创建生命周期管理上下文
 	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
 	c := &Connection{
-		conn:         conn,
-		lifetimeCtx:  &ctx,
-		cancel:       cancel,
-		msgChan:      make(chan []byte),
-		lock:         &sync.RWMutex{},
-		wsWriterLock: &sync.Mutex{},
-		userInfo:     newUserInfo(),
-		connectTime:  time.Now(),
-		Channel:      nil,
+		conn:        conn,
+		lifetimeCtx: &ctx,
+		cancel:      cancel,
+		msgChan:     make(chan []byte),
+		lock:        &sync.RWMutex{},
+		user:        &userInfo{userId: 0, permission: make([]string, 0), lifetimeHolder: nil, cancel: nil},
+		connectTime: time.Now(),
+		channels:    make(map[string]Pub),
+		address:     conn.RemoteAddr(),
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	return c
 }
 
+// Subscribe 订阅事件
+func (c *Connection) Subscribe(name string) bool {
+	pub, ok := GetPub(name)
+	if !ok {
+		return false
+	}
+	pub.Subscribe(c)
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.channels[name] = pub
+	return true
+}
+
+// Subscribed 已订阅事件名
+func (c *Connection) Subscribed() []string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	names := make([]string, 0, len(c.channels))
+	for name := range c.channels {
+		names = append(names, name)
+	}
+	return names
+}
+
+// UnSubscribe 取消事件订阅
+func (c *Connection) UnSubscribe(name string) {
+	c.lock.Lock()
+	pub, ok := c.channels[name]
+	if !ok {
+		return
+	}
+	delete(c.channels, name)
+	c.lock.Unlock()
+
+	pub.UnSubscribe(c)
+}
+
+// Publish 在已订阅事件中发布信息
+func (c *Connection) Publish(name string, data string) error {
+	c.lock.RLock()
+	pub, ok := c.channels[name]
+	if !ok {
+		return errors.New("channel not found in subscribed")
+	}
+	c.lock.RUnlock()
+	pub.Publish(data, c)
+	return nil
+}
+
+// Login 连接登录
+func (c *Connection) Login(id int64, username string, permission []string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	// 取消已登录信息
+	if c.user.userId != 0 {
+		c.user.cancel()
+	}
+
+	c.user.userId = id
+	c.user.userName = username
+	c.user.permission = permission
+	ctx, cancel := context.WithTimeout(context.Background(), loginExpire)
+	c.user.lifetimeHolder = ctx
+	c.user.cancel = cancel
+
+	// 登录超时
+	go func() {
+		select {
+		case <-ctx.Done():
+			loguru.SimpleLog(loguru.Debug, "WS", "login expire")
+		case <-(*c.lifetimeCtx).Done():
+			cancel()
+		}
+	}()
+}
+
+// UserInfo 返回登录信息：id，用户名，权限，未登录则id为0
+func (c *Connection) UserInfo() (int64, string, []string) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	if c.user.userId == 0 {
+		return 0, "", nil
+	}
+	return c.user.userId, c.user.userName, c.user.permission
+}
+
+// Logout 连接退出登录
+func (c *Connection) Logout() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.user.userId == 0 {
+		return
+	}
+	c.user.cancel()
+	c.user.userId = 0
+	c.user.permission = nil
+	c.user.lifetimeHolder = nil
+	c.user.cancel = nil
+}
+
+// LoginStatus 连接登录状态
+func (c *Connection) LoginStatus() bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.user.userId != 0
+}
+
+// Send 发送消息
 func (c *Connection) Send(data []byte) error {
-	if c.IsClose() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.closed {
 		return errors.New("connection is closed")
 	}
-	c.wsWriterLock.Lock()
-	defer c.wsWriterLock.Unlock()
 	err := c.conn.WriteMessage(websocket.TextMessage, data)
 	if err != nil {
 		return err
@@ -306,21 +378,7 @@ func (c *Connection) Send(data []byte) error {
 }
 
 func (c *Connection) RemoteAddr() net.Addr {
-	return c.conn.RemoteAddr()
-}
-
-// Login 连接登录
-func (c *Connection) Login(id int64, permissions []string) {
-	c.userInfo.on(id, permissions)
-}
-
-func (c *Connection) Logout() {
-	c.userInfo.off()
-}
-
-// IsLogin 判断是否是登录状态
-func (c *Connection) IsLogin() bool {
-	return c.userInfo.status()
+	return c.address
 }
 
 func (c *Connection) IsClose() bool {
@@ -343,13 +401,18 @@ func (c *Connection) listen() {
 		}
 		switch type_ {
 		case websocket.TextMessage:
+			if string(message) == "pong" {
+				c.heartChan <- time.Now().Unix()
+				handleLog(dataType.Success, c.RemoteAddr().String(), "heartbeat", "", 0)
+				continue
+			}
 			c.msgChan <- message
 		case websocket.BinaryMessage:
 			c.msgChan <- message
 		case websocket.CloseMessage:
 			c.Disconnect()
 		case websocket.PingMessage:
-			_ = c.conn.WriteMessage(websocket.PongMessage, []byte("pong"))
+			_ = c.Send([]byte("pong"))
 			loguru.SimpleLog(loguru.Info, "WS", "pong to "+c.conn.RemoteAddr().String())
 		default:
 			continue
@@ -403,6 +466,7 @@ func (c *Connection) waitHeartbeat(tick int64) {
 			if t > tick+10 || t < tick {
 				continue
 			}
+			return
 		case <-ctx.Done():
 			loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("heartbeat failed from %s", c.conn.RemoteAddr().String()))
 			c.Disconnect()
@@ -419,7 +483,7 @@ func (c *Connection) heartbeat() {
 		for {
 			select {
 			case t := <-ticker.C:
-				_ = c.conn.WriteMessage(websocket.TextMessage, []byte("ping"))
+				_ = c.Send([]byte("ping"))
 				go c.waitHeartbeat(t.Unix())
 			case <-(*c.lifetimeCtx).Done():
 				return
@@ -430,13 +494,10 @@ func (c *Connection) heartbeat() {
 
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
-	if c.IsClose() {
-		return
-	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if c.Channel != nil {
-		c.Channel.UnSubscribe(c)
+	if c.closed {
+		return
 	}
 	if c.conn != nil {
 		err := c.conn.Close()
@@ -444,8 +505,11 @@ func (c *Connection) Disconnect() {
 			loguru.SimpleLog(loguru.Error, "WS", "connect close err: "+err.Error())
 		}
 	}
+	for _, pub := range c.channels {
+		pub.UnSubscribe(c)
+	}
+	c.channels = make(map[string]Pub)
 	// 主动取消生命周期上下文
-	c.userInfo.off()
 	c.cancel()
 	c.closed = true
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("disconnect from %s, lifetime %s",
@@ -467,19 +531,6 @@ func UpgradeConn(c *gin.Context) {
 		return conn.WriteMessage(websocket.TextMessage, []byte("pong"))
 	})
 	connect := NewConnection(conn)
-	wsChan := c.Query("channel")
-	if wsChan != "" {
-		pub, flag := Pubs[wsChan]
-		if flag {
-			connect.Channel = pub
-			pub.Subscribe(connect)
-		} else {
-			c.AbortWithStatusJSON(200, dataType.JsonWrong{
-				Code: dataType.WrongData, Message: "channel not found",
-			})
-			return
-		}
-	}
 	// 设置连接关闭时调用管理对象的Disconnect方法
 	conn.SetCloseHandler(func(code int, text string) error {
 		connect.Disconnect()
@@ -491,7 +542,7 @@ func UpgradeConn(c *gin.Context) {
 	connect.heartbeat()
 }
 
-// RegisterHandler 注册ws处理函数，key已存在则跳过
+// RegisterHandler 注册ws处理函数，key已存则触发panic
 func RegisterHandler(key string, f ...handleFunc) {
 	if _, flag := tasks[key]; flag {
 		loguru.Logger.Fatalf("duplicate register ws handler: %s", key)

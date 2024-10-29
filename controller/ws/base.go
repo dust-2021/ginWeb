@@ -1,12 +1,15 @@
 package ws
 
 import (
+	"fmt"
+	"ginWeb/middleware/wsMiddle"
 	"ginWeb/model"
 	"ginWeb/model/systemMode"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/utils/auth"
 	"ginWeb/utils/database"
+	"strings"
 	"time"
 )
 
@@ -48,7 +51,7 @@ func Login(w *wes.WContext) {
 	if err != nil {
 		w.Result(dataType.WrongBody, err.Error())
 	}
-	w.Conn.Login(record.Id, permissions)
+	w.Conn.Login(record.Id, record.Email, permissions)
 	w.Result(dataType.Success, "success")
 }
 
@@ -57,20 +60,86 @@ func Logout(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
-func Broadcast(w *wes.WContext) {
-	if w.Conn.Channel == nil {
-		w.Result(dataType.WrongBody, "channel is nil")
+// ws订阅事件接口
+func subHandle(w *wes.WContext) {
+	if len(w.Request.Params) == 0 {
+		w.Result(dataType.WrongData, "without params")
 		return
 	}
-	if len(w.Request.Params) != 1 {
-		w.Result(dataType.WrongBody, "invalid param")
-		return
+	var keys []string
+	for _, v := range w.Request.Params {
+		name, flag := v.(string)
+		if !flag {
+			w.Result(dataType.WrongData, fmt.Sprintf("param invalid %v", v))
+			return
+		}
+		keys = append(keys, name)
 	}
-	data, ok := w.Request.Params[0].(string)
-	if !ok {
-		w.Result(dataType.WrongBody, "invalid param")
-		return
+	var failedKeys = make([]string, 0)
+	for _, name := range keys {
+		if f := w.Conn.Subscribe(name); !f {
+			failedKeys = append(failedKeys, name)
+		}
 	}
-	w.Conn.Channel.Publish([]byte(data), w.Conn)
+	if len(failedKeys) > 0 {
+		w.Result(dataType.NotFound, strings.Join(failedKeys, ","))
+	}
 	w.Result(dataType.Success, "success")
+}
+
+// ws取消事件订阅接口
+func unsubHandle(w *wes.WContext) {
+	if len(w.Request.Params) == 0 {
+		w.Result(dataType.WrongData, "without params")
+		return
+	}
+
+	var keys []string
+	for _, v := range w.Request.Params {
+		name, flag := v.(string)
+		if !flag {
+			w.Result(dataType.WrongData, fmt.Sprintf("param invalid %v", v))
+			return
+		}
+		keys = append(keys, name)
+	}
+
+	for _, name := range keys {
+		w.Conn.UnSubscribe(name)
+	}
+	w.Result(dataType.Success, "success")
+}
+
+// Broadcast 向频道发送消息
+func Broadcast(w *wes.WContext) {
+
+	if len(w.Request.Params) != 2 {
+		w.Result(dataType.WrongBody, "invalid param")
+		return
+	}
+	name, ok := w.Request.Params[0].(string)
+	if !ok {
+		w.Result(dataType.WrongBody, "invalid channel")
+		return
+	}
+	msg, ok := w.Request.Params[1].(string)
+	if !ok {
+		w.Result(dataType.WrongBody, "invalid message")
+		return
+	}
+	err := w.Conn.Publish(name, msg)
+	if err != nil {
+		w.Result(dataType.WrongBody, err.Error())
+		return
+	}
+	w.Result(dataType.Success, "success")
+}
+
+func init() {
+	wes.RegisterHandler("login", Login)
+	wes.RegisterHandler("time", ServerTime)
+	wes.RegisterHandler("logout", wsMiddle.LoginCheck, Logout)
+	wes.RegisterHandler("broadcast", Broadcast)
+	wes.RegisterHandler("subscribe", subHandle)
+	wes.RegisterHandler("unsubscribe", unsubHandle)
 }

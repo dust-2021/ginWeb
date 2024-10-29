@@ -6,7 +6,6 @@ import (
 	"ginWeb/controller/trade/spot"
 	"ginWeb/controller/ws"
 	"ginWeb/middleware/ginMiddle"
-	"ginWeb/middleware/wsMiddle"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
 	"github.com/gin-gonic/gin"
@@ -44,18 +43,14 @@ func InitRoute(g *gin.Engine) {
 func InitWs(g *gin.Engine) {
 	// websocket
 	g.Handle("GET", "/ws", ginMiddle.NewIpLimiter(10, 0, 0, "ws").Handle, wes.UpgradeConn)
-	wes.RegisterHandler("login", ws.Login)
 	wes.RegisterHandler("hello", ws.Hello)
-	wes.RegisterHandler("time", ws.ServerTime)
-	wes.RegisterHandler("logout", wsMiddle.LoginCheck, ws.Logout)
-	wes.RegisterHandler("broadcast", ws.Broadcast)
 
 	// 注册订阅事件
-	subscribe.NewPublisher("hello", "1s", func() []byte {
-		return []byte("hello")
+	subscribe.NewPublisher("hello", "1s", func() string {
+		return "hello"
 	})
-	subscribe.NewPublisher("time", "*/2 * * * * *", func() []byte {
-		return []byte(time.Now().Format("2006-01-02 15:04:05.0000"))
+	subscribe.NewPublisher("time", "*/2 * * * * *", func() string {
+		return time.Now().Format("2006-01-02 15:04:05.0000")
 	})
 
 	// 注册频道
