@@ -46,16 +46,16 @@ async def listener():
 async def sender():
     session = aiohttp.ClientSession()
     ws = await session.ws_connect('ws://127.0.0.1:8000/ws')
-    # login_data = {
-    #     "id": "0",
-    #     "method": "login",
-    #     "params": [
-    #         "xxxx@qq.com",
-    #         "123456"
-    #     ]
-    # }
-    # await ws.send_str(json.dumps(login_data))
-    # await ws.receive()
+    login_data = {
+        "id": "0",
+        "method": "login",
+        "params": [
+            "xxxx@qq.com",
+            "123456"
+        ]
+    }
+    await ws.send_str(json.dumps(login_data))
+    await ws.receive()
     await ws.send_str(json.dumps({
         "id": "0",
         "method": "subscribe",
@@ -64,22 +64,21 @@ async def sender():
         ]
     }))
     await ws.receive()
-    # for i in range(10):
-    #     await ws.send_str(json.dumps({
-    #         "id": str(i),
-    #         "method": "broadcast",
-    #         "params": [
-    #             "hall",
-    #             "hello everyone"
-    #         ]
-    #     }))
+    for i in range(10):
+        await ws.send_str(json.dumps({
+            "id": str(i),
+            "method": "broadcast",
+            "params": [
+                "hall",
+                "hello everyone"
+            ]
+        }))
     async for resp in ws:
         if resp.data == "ping":
             print("heartbeat")
             await ws.send_str("pong")
             continue
         print("send result:", resp.data)
-        await asyncio.sleep(1)
     await ws.close()
     await session.close()
 

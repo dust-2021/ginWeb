@@ -5,10 +5,11 @@ import (
 	"ginWeb/controller/trade"
 	"ginWeb/controller/trade/spot"
 	"ginWeb/controller/ws"
-	"ginWeb/middleware/ginMiddle"
+	"ginWeb/middleware"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
 	"github.com/gin-gonic/gin"
+	"strconv"
 	"time"
 )
 import "ginWeb/controller/auth"
@@ -22,7 +23,7 @@ func InitRoute(g *gin.Engine) {
 
 	// 带token验证的api组
 	sapi := g.Group("/sapi")
-	sapi.Use(ginMiddle.NewLoginStatus().Handle)
+	sapi.Use(middleware.NewLoginStatus().HttpHandle)
 	controller.Logout{}.RegisterRoute("/logout", sapi)
 	controller.FreshToken{}.RegisterRoute("/freshToken", sapi)
 
@@ -42,8 +43,16 @@ func InitRoute(g *gin.Engine) {
 // InitWs 注册ws处理逻辑
 func InitWs(g *gin.Engine) {
 	// websocket
-	g.Handle("GET", "/ws", ginMiddle.NewIpLimiter(10, 0, 0, "ws").Handle, wes.UpgradeConn)
+	g.Handle("GET", "/ws",
+		middleware.NewIpLimiter(10, 0, 0, "ws").HttpHandle, wes.UpgradeConn)
 	wes.RegisterHandler("hello", ws.Hello)
+	wes.RegisterHandler("login", ws.Login)
+	wes.RegisterHandler("time", ws.ServerTime)
+	wes.RegisterHandler("logout", middleware.NewLoginStatus().WsHandle, ws.Logout)
+	wes.RegisterHandler("broadcast", middleware.NewLoginStatus().WsHandle,
+		middleware.NewPermission([]string{"admin"}).WsHandle, ws.Broadcast)
+	wes.RegisterHandler("subscribe", ws.SubHandle)
+	wes.RegisterHandler("unsubscribe", ws.UnsubHandle)
 
 	// 注册订阅事件
 	subscribe.NewPublisher("hello", "1s", func() string {
@@ -53,6 +62,10 @@ func InitWs(g *gin.Engine) {
 		return time.Now().Format("2006-01-02 15:04:05.0000")
 	})
 
-	// 注册频道
+	// 注册大厅
 	subscribe.NewPublisher("hall", "")
+	// 注册十个频道
+	for i := 1; i < 11; i++ {
+		subscribe.NewPublisher(strconv.Itoa(i), "")
+	}
 }

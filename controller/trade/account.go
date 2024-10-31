@@ -1,7 +1,7 @@
 package trade
 
 import (
-	"ginWeb/middleware/ginMiddle"
+	"ginWeb/middleware"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/exchange/binance"
 	"ginWeb/utils/exchange/binance/binanceApi"
@@ -52,5 +52,5 @@ func (a Account) AddV1(c *gin.Context) {
 }
 
 func (a Account) RegisterRoute(r string, g *gin.RouterGroup) {
-	g.Handle("POST", r, ginMiddle.NewPermission([]string{"admin"}).Handle, a.AddV1)
+	g.Handle("POST", r, middleware.NewPermission([]string{"admin"}).HttpHandle, a.AddV1)
 }

@@ -1,7 +1,7 @@
 package perm
 
 import (
-	"ginWeb/middleware/ginMiddle"
+	"ginWeb/middleware"
 	"ginWeb/model/authMode"
 	"ginWeb/model/systemMode"
 	"ginWeb/service/dataType"
@@ -118,7 +118,7 @@ func (g Grant) GroupToUser(ctx *gin.Context) {
 func (g Grant) RegisterRoute(r string, router *gin.RouterGroup) {
 	granter := router.Group(r)
 
-	granter.Use(ginMiddle.NewPermission([]string{"admin"}).Handle)
+	granter.Use(middleware.NewPermission([]string{"admin"}).HttpHandle)
 	granter.Handle("POST", "/roleToUser", g.RoleToUser)
 	granter.Handle("POST", "/groupToUser", g.GroupToUser)
 }

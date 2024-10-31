@@ -6,20 +6,23 @@ const (
 	Unknown = 1
 	// WrongBody 错误报文
 	WrongBody = 10001
+	// WrongData 数据内容错误
+	WrongData = 10002
 	// Timeout 超时
-	Timeout         = 10002
-	NotFound        = 10003
-	WsResolveFailed = 10004
-	NoToken         = 10005
-	WrongToken      = 10006
-	BlackToken      = 10007
-	// WrongData 错误的数据
-	WrongData          = 10008
-	AlreadyExist       = 10009
-	IpLimited          = 10010
-	RouteLimited       = 10011
-	UserLimited        = 10012
-	DeniedByPermission = 10013
+	Timeout         = 10003
+	NotFound        = 10004
+	TooManyRequests = 10005
+	AlreadyExist    = 10006
+
+	NoToken            = 10101
+	WrongToken         = 10102
+	BlackToken         = 10103
+	DeniedByPermission = 10104
+	IpLimited          = 10105
+	RouteLimited       = 10106
+	UserLimited        = 10107
+
+	WsResolveFailed = 10201
 )
 
 const (

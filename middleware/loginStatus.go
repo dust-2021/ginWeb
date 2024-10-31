@@ -1,19 +1,18 @@
-package ginMiddle
+package middleware
 
 import (
-	"ginWeb/middleware"
 	reCache "ginWeb/service/cache"
 	"ginWeb/service/dataType"
+	"ginWeb/service/wes"
 	"ginWeb/utils/auth"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
 
 type loginStatus struct {
-	Redirect bool
 }
 
-func (s *loginStatus) Handle(c *gin.Context) {
+func (l *loginStatus) HttpHandle(c *gin.Context) {
 	tokenStr := c.GetHeader("Token")
 	if tokenStr == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, dataType.JsonWrong{
@@ -40,7 +39,13 @@ func (s *loginStatus) Handle(c *gin.Context) {
 	c.Set("token", token)
 }
 
+func (l *loginStatus) WsHandle(w *wes.WContext) {
+	if !w.Conn.LoginStatus() {
+		w.Result(dataType.NoToken, "haven't login")
+	}
+}
+
 // NewLoginStatus token验证中间件，验证token是否正确、是否过期、是否已注销，并将token指针放入请求上下文中
-func NewLoginStatus() middleware.Middleware {
+func NewLoginStatus() Middleware {
 	return &loginStatus{}
 }

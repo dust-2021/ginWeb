@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"ginWeb/service/scheduler"
+	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 )
@@ -33,13 +34,15 @@ func (p PeriodType) String() string {
 }
 
 type Middleware interface {
-	Handle(ctx *gin.Context)
+	HttpHandle(*gin.Context)
+	WsHandle(*wes.WContext)
 }
 
 type Limiter interface {
 	// Reset 周期性重置计数器
 	Reset(PeriodType)
-	Handle(*gin.Context)
+	HttpHandle(*gin.Context)
+	WsHandle(*wes.WContext)
 }
 
 // LimiterContainer 所有已生成的限流器

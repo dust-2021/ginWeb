@@ -2,7 +2,7 @@ package controller
 
 import (
 	"ginWeb/config"
-	"ginWeb/middleware/ginMiddle"
+	"ginWeb/middleware"
 	"ginWeb/model"
 	"ginWeb/model/systemMode"
 	"ginWeb/service/dataType"
@@ -66,5 +66,5 @@ func (receiver Login) V1(c *gin.Context) {
 
 func (receiver Login) RegisterRoute(r string, g *gin.RouterGroup) {
 	// 添加独立限流器
-	g.Handle("POST", r, ginMiddle.NewIpLimiter(5, 0, 0, g.BasePath()+r).Handle, receiver.V1)
+	g.Handle("POST", r, middleware.NewIpLimiter(5, 0, 0, g.BasePath()+r).HttpHandle, receiver.V1)
 }

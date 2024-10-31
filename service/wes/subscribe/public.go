@@ -95,8 +95,8 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) {
 }
 
 func (p *Publisher) Shutdown() {
-	wes.PubsLock.Lock()
-	defer wes.PubsLock.Unlock()
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	p.cancel()
 	if p.taskId != 0 {
 		scheduler.App.Remove(p.taskId)
@@ -164,7 +164,7 @@ func NewPublisher(name string, d string, f ...func() string) wes.Pub {
 	if err != nil {
 		loguru.SimpleLog(loguru.Fatal, "WS", "failed create pub:"+err.Error())
 	}
-	wes.Pubs[name] = pub
+	wes.SetPub(name, pub)
 	return pub
 }
 

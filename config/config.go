@@ -19,6 +19,7 @@ type Config struct {
 		WsTaskTimeout   uint32 `yaml:"wsTaskTimeout"`   // ws处理超时
 		WsLoginLifetime uint32 `yaml:"wsLoginLifetime"` // ws登录有效时间
 		WsHeartbeat     uint32 `yaml:"wsHeartbeat"`     // ws心跳检测
+		WsMaxWaiting    uint8  `yaml:"wsMaxWaiting"`    // ws单个连接最大等待处理数量
 		Logger          struct {
 			Path  string `yaml:"path"`  // 日志文件位置
 			Level string `yaml:"level"` // 日志等级

@@ -25,20 +25,36 @@ var connectionLifeTime = time.Duration(config.Conf.Server.WsLifeTime) * time.Sec
 // ws连接心跳检测周期
 var heartbeat = time.Duration(config.Conf.Server.WsHeartbeat) * time.Second
 
+// 登录超时时间
 var loginExpire = time.Duration(config.Conf.Server.WsLoginLifetime) * time.Second
 
-// Pubs ws已注册订阅事件
-var Pubs = make(map[string]Pub)
+// ws已注册订阅事件
+var pubs = make(map[string]Pub)
 
-// PubsLock 已注册订阅事件读写锁
-var PubsLock = sync.RWMutex{}
+// 已注册订阅事件读写锁
+var pubsLock = sync.RWMutex{}
 
 // GetPub 查找订阅事件
 func GetPub(name string) (Pub, bool) {
-	PubsLock.RLock()
-	defer PubsLock.RUnlock()
-	pub, ok := Pubs[name]
+	pubsLock.RLock()
+	defer pubsLock.RUnlock()
+	pub, ok := pubs[name]
 	return pub, ok
+}
+
+// SetPub 设置订阅事件
+func SetPub(name string, pub Pub) bool {
+	pubsLock.Lock()
+	defer pubsLock.Unlock()
+	if pub == nil {
+		delete(pubs, name)
+		return true
+	}
+	if _, ok := pubs[name]; ok {
+		return false
+	}
+	pubs[name] = pub
+	return true
 }
 
 // ws处理逻辑类型
@@ -52,10 +68,10 @@ var tasks = make(map[string]*handler)
 
 // 接收的ws报文
 type payload struct {
-	Id        string        `json:"id"`
-	Method    string        `json:"method"`
-	Params    []interface{} `json:"params"`
-	Signature string        `json:"signature"`
+	Id        string   `json:"id"`
+	Method    string   `json:"method"`
+	Params    []string `json:"params"`
+	Signature string   `json:"signature"`
 }
 
 // ws返回类型
@@ -148,10 +164,11 @@ func (w *WContext) Set(k string, v interface{}) {
 }
 
 func (w *WContext) handle() {
+
 	defer func() {
 		if err := recover(); err != nil {
 			loguru.SimpleLog(loguru.Error, "WS", fmt.Sprintf("panic from ws handle: %v", err))
-			w.Result(dataType.Unknown, err)
+			w.Result(dataType.WsResolveFailed, "resolve failed")
 		}
 	}()
 	if funcs, ok := tasks[w.Request.Method]; ok {
@@ -170,7 +187,11 @@ func (w *WContext) handle() {
 				f(w)
 			}
 			cost := time.Since(start)
-			handleLog(w.statusCode, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "success", cost)
+			logInfo := "success"
+			if w.statusCode != dataType.Success {
+				logInfo = w.response.(string)
+			}
+			handleLog(w.statusCode, w.Conn.conn.RemoteAddr().String(), w.Request.Method, logInfo, cost)
 			// 处理完成信号
 			defer func() {
 				c <- struct{}{}
@@ -244,7 +265,8 @@ func NewConnection(conn *websocket.Conn) *Connection {
 		conn:        conn,
 		lifetimeCtx: &ctx,
 		cancel:      cancel,
-		msgChan:     make(chan []byte),
+		msgChan:     make(chan []byte, config.Conf.Server.WsMaxWaiting),
+		heartChan:   make(chan int64, config.Conf.Server.WsMaxWaiting),
 		lock:        &sync.RWMutex{},
 		user:        &userInfo{userId: 0, permission: make([]string, 0), lifetimeHolder: nil, cancel: nil},
 		connectTime: time.Now(),
@@ -387,6 +409,40 @@ func (c *Connection) IsClose() bool {
 	return c.closed
 }
 
+// 将消息压入通道，压入失败则返回请求错误
+func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
+
+	if isHeartbeat {
+		select {
+		case c.heartChan <- time.Now().Unix():
+			return
+		case <-time.After(1 * time.Second):
+			var m = resp{
+				Id:         "",
+				StatusCode: dataType.TooManyRequests,
+				Data:       "too much heartbeat",
+			}
+			data, _ := json.Marshal(m)
+			_ = c.Send(data)
+			return
+		}
+
+	}
+	select {
+	case c.msgChan <- msg:
+		return
+	case <-time.After(1 * time.Second):
+		var m = resp{
+			Id:         "",
+			StatusCode: dataType.TooManyRequests,
+			Data:       "too much request",
+		}
+		data, _ := json.Marshal(m)
+		_ = c.Send(data)
+		return
+	}
+}
+
 // 开始接收数据
 func (c *Connection) listen() {
 	for {
@@ -402,18 +458,17 @@ func (c *Connection) listen() {
 		switch type_ {
 		case websocket.TextMessage:
 			if string(message) == "pong" {
-				c.heartChan <- time.Now().Unix()
-				handleLog(dataType.Success, c.RemoteAddr().String(), "heartbeat", "", 0)
+				go c.checkInMessage(true, message)
 				continue
 			}
-			c.msgChan <- message
+			go c.checkInMessage(false, message)
 		case websocket.BinaryMessage:
-			c.msgChan <- message
+			loguru.SimpleLog(loguru.Debug, "WS", "ignore binary message from: "+c.address.String())
+			continue
 		case websocket.CloseMessage:
 			c.Disconnect()
 		case websocket.PingMessage:
 			_ = c.Send([]byte("pong"))
-			loguru.SimpleLog(loguru.Info, "WS", "pong to "+c.conn.RemoteAddr().String())
 		default:
 			continue
 		}

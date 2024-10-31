@@ -1,8 +1,8 @@
-package ginMiddle
+package middleware
 
 import (
-	"ginWeb/middleware"
 	"ginWeb/service/dataType"
+	"ginWeb/service/wes"
 	"ginWeb/utils/auth"
 	"ginWeb/utils/tools"
 	"github.com/gin-gonic/gin"
@@ -15,11 +15,11 @@ type permission struct {
 	SelectPermission [][]string
 }
 
-func (p *permission) Handle(c *gin.Context) {
-	if len(p.Permission) == 0 {
-		c.Next()
-		return
-	}
+func (p *permission) handle(perm []string) bool {
+	return tools.ContainsAll(perm, p.Permission) && tools.ContainOne(perm, p.SelectPermission)
+}
+
+func (p *permission) HttpHandle(c *gin.Context) {
 	tokenPtr, f := c.Get("token")
 	if !f {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
@@ -34,16 +34,23 @@ func (p *permission) Handle(c *gin.Context) {
 		})
 		return
 	}
-	if !(tools.ContainsAll(token.Permission, p.Permission) && tools.ContainOne(token.Permission, p.SelectPermission)) {
+	if !p.handle(token.Permission) {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
-			Code: dataType.DeniedByPermission, Message: "permission don't match",
+			Code: dataType.DeniedByPermission, Message: "denied",
 		})
 	}
 
 }
 
+func (p *permission) WsHandle(c *wes.WContext) {
+	_, _, perm := c.Conn.UserInfo()
+	if !p.handle(perm) {
+		c.Result(dataType.DeniedByPermission, "denied")
+	}
+}
+
 // NewPermission 对比token中存储的权限是否足够，需要前置loginStatus中间件
-func NewPermission(perms []string, choice ...[]string) middleware.Middleware {
+func NewPermission(perms []string, choice ...[]string) Middleware {
 	per := &permission{
 		Permission:       perms,
 		SelectPermission: choice,
