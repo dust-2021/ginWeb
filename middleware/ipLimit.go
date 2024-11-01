@@ -9,11 +9,12 @@ import (
 	"ginWeb/utils/database"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
+// redis中key的前缀
 var namespace = "IPLimiter"
 
+// 已存在的limiter的uid
 var existedUuid []string
 
 type ipLimiter struct {
@@ -29,7 +30,7 @@ func (i *ipLimiter) key(p PeriodType, ip string) string {
 
 func (i *ipLimiter) Reset(p PeriodType) {
 	ctx := context.Background()
-	resp := database.Rdb.Keys(ctx, fmt.Sprintf("::%s::%s::%s*", namespace, i.uuid, p.String()))
+	resp := database.Rdb.Keys(ctx, fmt.Sprintf("::%s::%s::%s::*", namespace, i.uuid, p.String()))
 	if resp.Err() != nil {
 		loguru.SimpleLog(loguru.Error, "LIMITER", "ipLimiter reset err:"+resp.Err().Error())
 	}
@@ -89,26 +90,16 @@ func (i *ipLimiter) WsHandle(c *wes.WContext) {
 	}
 }
 
-// NewIpLimiter ip限流器，数据缓存在redis中，可选一个string参数作为限流器唯一ID，否则使用UUID生成
-func NewIpLimiter(minute uint32, hour uint32, day uint32, args ...string) Limiter {
-	var u string
-	if len(args) > 0 {
-		u = args[0]
-	} else {
-		uid, err := uuid.NewUUID()
-		if err != nil {
-			loguru.SimpleLog(loguru.Fatal, "LIMITER", "create ipLimiter uuid failed")
-		}
-		u = uid.String()
-	}
+// NewIpLimiter ip限流器，数据缓存在redis中
+func NewIpLimiter(minute uint32, hour uint32, day uint32, uniqueId string) Limiter {
 	// 判断是否已存在同名uuid
 	for _, v := range existedUuid {
-		if v == u {
+		if v == uniqueId {
 			loguru.SimpleLog(loguru.Fatal, "LIMITER", "duplicate ipLimiter uuid:"+v)
 		}
 	}
 	limiter := &ipLimiter{
-		uuid:     u,
+		uuid:     uniqueId,
 		minuteLm: minute,
 		hourLm:   hour,
 		dayLm:    day,

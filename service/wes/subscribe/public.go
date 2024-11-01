@@ -14,6 +14,7 @@ import (
 )
 
 type resp struct {
+	SenderId   int64       `json:"senderId"`
 	SenderName string      `json:"senderName"`
 	Timestamp  int64       `json:"timestamp"`
 	Data       interface{} `json:"data"`
@@ -38,41 +39,48 @@ type Publisher struct {
 	taskId cron.EntryID
 }
 
-func (p *Publisher) Subscribe(c *wes.Connection) {
+func (p *Publisher) Subscribe(c *wes.Connection) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if _, ok := p.subscribers[c]; ok {
-		return
+		return errors.New("already in room")
 	}
 	p.subscribers[c] = struct{}{}
 	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s subscribe channel %s", c.RemoteAddr().String(), p.Name))
+	return nil
 }
 
-func (p *Publisher) UnSubscribe(c *wes.Connection) {
+func (p *Publisher) UnSubscribe(c *wes.Connection) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
 	delete(p.subscribers, c)
 	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s unsubscribe channel %s", c.RemoteAddr().String(), p.Name))
+	return nil
 }
 
-func (p *Publisher) Publish(v string, sender *wes.Connection) {
-	if p.closed || v == "" {
-		return
+func (p *Publisher) Publish(v string, sender *wes.Connection) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.closed {
+		return errors.New("publish closed")
+	}
+	if v == "" {
+		return errors.New("msg is empty")
 	}
 	var shouldDelete = make([]*wes.Connection, 0)
 	var senderName = ""
+	var senderId int64 = 0
 	if sender != nil {
-		ok, name, _ := sender.UserInfo()
-		if ok == 0 {
+		senderId, senderName, _ = sender.UserInfo()
+		if senderId == 0 {
 			senderName = sender.RemoteAddr().String()
-		} else {
-			senderName = name
 		}
 	}
 	var r = resp{
+		SenderId:   senderId,
 		SenderName: senderName,
-		Timestamp:  time.Now().Unix(),
+		Timestamp:  time.Now().UnixMilli(),
 		Data:       v,
 	}
 	data, _ := json.Marshal(r)
@@ -90,19 +98,22 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) {
 	// 删除发送失败连接
 	for _, conn := range shouldDelete {
 		//loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("delete subscribe \"%s\" from %s", conn.RemoteAddr().String(), p.Name))
-		p.UnSubscribe(conn)
+		delete(p.subscribers, conn)
 	}
+	return nil
 }
 
-func (p *Publisher) Shutdown() {
+func (p *Publisher) Shutdown() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.cancel()
 	if p.taskId != 0 {
 		scheduler.App.Remove(p.taskId)
 	}
+	clear(p.subscribers)
 	p.taskId = 0
 	p.closed = true
+	return nil
 }
 
 func (p *Publisher) Start(timer string) error {
@@ -130,7 +141,11 @@ func (p *Publisher) periodDo(period time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
-			p.Publish(p.f(), nil)
+			err := p.Publish(p.f(), nil)
+			if err != nil {
+				loguru.SimpleLog(loguru.Error, "publish fail", err.Error())
+				return
+			}
 		case <-p.ctx.Done():
 			return
 		}
@@ -139,7 +154,11 @@ func (p *Publisher) periodDo(period time.Duration) {
 
 func (p *Publisher) cronDo(cron string) error {
 	_, err := scheduler.App.AddFunc(cron, func() {
-		p.Publish(p.f(), nil)
+		err := p.Publish(p.f(), nil)
+		if err != nil {
+			loguru.SimpleLog(loguru.Error, "publish fail", err.Error())
+			return
+		}
 	})
 	return err
 }
@@ -162,11 +181,8 @@ func NewPublisher(name string, d string, f ...func() string) wes.Pub {
 	}
 	err := pub.Start(d)
 	if err != nil {
-		loguru.SimpleLog(loguru.Fatal, "WS", "failed create pub:"+err.Error())
+		loguru.SimpleLog(loguru.Fatal, "WS", "failed start pub:"+err.Error())
 	}
 	wes.SetPub(name, pub)
 	return pub
-}
-
-func init() {
 }

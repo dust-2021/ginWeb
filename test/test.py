@@ -21,7 +21,7 @@ async def listener():
     ws = await session.ws_connect('ws://127.0.0.1:8000/ws')
     data = {
         "id": "1",
-        "method": "subscribe",
+        "method": "channel.subscribe",
         "params": [
             # "hello",
             "hall"
@@ -48,7 +48,7 @@ async def sender():
     ws = await session.ws_connect('ws://127.0.0.1:8000/ws')
     login_data = {
         "id": "0",
-        "method": "login",
+        "method": "base.login",
         "params": [
             "xxxx@qq.com",
             "123456"
@@ -58,7 +58,7 @@ async def sender():
     await ws.receive()
     await ws.send_str(json.dumps({
         "id": "0",
-        "method": "subscribe",
+        "method": "channel.subscribe",
         "params": [
             "hall",
         ]
@@ -67,7 +67,7 @@ async def sender():
     for i in range(10):
         await ws.send_str(json.dumps({
             "id": str(i),
-            "method": "broadcast",
+            "method": "channel.broadcast",
             "params": [
                 "hall",
                 "hello everyone"

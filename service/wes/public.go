@@ -17,16 +17,16 @@ import (
 )
 
 // ws处理超时时间
-var handleTimeout = time.Duration(config.Conf.Server.WsTaskTimeout) * time.Second
+var handleTimeout = time.Duration(config.Conf.Server.Websocket.WsTaskTimeout) * time.Second
 
 // ws连接最大时长
-var connectionLifeTime = time.Duration(config.Conf.Server.WsLifeTime) * time.Second
+var connectionLifeTime = time.Duration(config.Conf.Server.Websocket.WsLifeTime) * time.Second
 
 // ws连接心跳检测周期
-var heartbeat = time.Duration(config.Conf.Server.WsHeartbeat) * time.Second
+var heartbeat = time.Duration(config.Conf.Server.Websocket.WsHeartbeat) * time.Second
 
 // 登录超时时间
-var loginExpire = time.Duration(config.Conf.Server.WsLoginLifetime) * time.Second
+var loginExpire = time.Duration(config.Conf.Server.Websocket.WsLoginLifetime) * time.Second
 
 // ws已注册订阅事件
 var pubs = make(map[string]Pub)
@@ -60,7 +60,7 @@ func SetPub(name string, pub Pub) bool {
 // ws处理逻辑类型
 type handleFunc func(ctx *WContext)
 
-// ws已注册处理函数
+// ws处理逻辑链
 type handler []handleFunc
 
 // 已注册的ws处理逻辑
@@ -81,28 +81,28 @@ type resp struct {
 	Data       interface{} `json:"data"`
 }
 
+func (r *resp) String() string {
+	return fmt.Sprintf("id:%s statusCode:%d data:%v", r.Id, r.StatusCode, r.Data)
+}
+
 // Pub 事件订阅接口类
 type Pub interface {
 	// Subscribe 订阅该事件
-	Subscribe(connection *Connection)
+	Subscribe(connection *Connection) error
 	// UnSubscribe 取消订阅
-	UnSubscribe(connection *Connection)
+	UnSubscribe(connection *Connection) error
 	// Publish 向收听者发送消息
-	Publish(string, *Connection)
+	Publish(string, *Connection) error
 	// Start 启动事件
 	Start(string) error
 	// Shutdown 关闭事件
-	Shutdown()
-}
-
-func (r *resp) String() string {
-	return fmt.Sprintf("id:%s statusCode:%d data:%v", r.Id, r.StatusCode, r.Data)
+	Shutdown() error
 }
 
 // ws格式化日志
 func handleLog(code int, ip string, method string, data string, cost time.Duration) {
 	info := fmt.Sprintf("%5d | %8s | %20s | %10s | %v", code, cost.String(), ip, method, data)
-	if code == 0 {
+	if code == dataType.Success {
 		loguru.SimpleLog(loguru.Info, "WS", info)
 	} else {
 		loguru.SimpleLog(loguru.Error, "WS", info)
@@ -113,13 +113,14 @@ func handleLog(code int, ip string, method string, data string, cost time.Durati
 // WContext ws处理上下文
 type WContext struct {
 	Conn      *Connection
-	Request   payload
+	Request   *payload
 	attribute map[string]interface{}
 
 	statusCode int
 	response   interface{}
-	isAbort    bool // 是否已退出
-	withResult bool // 是否已设置结果
+	isAbort    bool      // 是否已退出
+	withResult bool      // 是否已设置结果
+	once       sync.Once // 返回结果的单次锁
 }
 
 // Result 设置返回结果，终止后续处理逻辑
@@ -130,21 +131,27 @@ func (w *WContext) Result(code int, data interface{}) {
 	w.isAbort = true
 }
 
-// 返回数据
-func (w *WContext) returnData() {
-	if !w.withResult {
-		return
-	}
-	response := resp{
-		Id:         w.Request.Id,
-		StatusCode: w.statusCode,
-		Data:       w.response,
-	}
-	data, flag := json.Marshal(response)
-	if flag != nil {
-		handleLog(dataType.WrongData, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "wrong return data", 0)
-	}
-	_ = w.Conn.Send(data)
+// 返回数据，只会执行一次
+func (w *WContext) returnData(v []byte) {
+	w.once.Do(func() {
+		if v != nil {
+			_ = w.Conn.Send(v)
+			return
+		}
+		if !w.withResult {
+			return
+		}
+		response := resp{
+			Id:         w.Request.Id,
+			StatusCode: w.statusCode,
+			Data:       w.response,
+		}
+		data, flag := json.Marshal(response)
+		if flag != nil {
+			handleLog(dataType.WrongData, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "wrong return data", 0)
+		}
+		_ = w.Conn.Send(data)
+	})
 }
 
 // Abort 中断处理
@@ -172,51 +179,52 @@ func (w *WContext) handle() {
 		}
 	}()
 	if funcs, ok := tasks[w.Request.Method]; ok {
-		c := make(chan struct{}, 1)
 
 		// 任务处理计时器
-		timeoutCtx, cf := context.WithTimeout(context.Background(), handleTimeout)
-		defer cf()
+		doneCtx, done := context.WithCancel(context.Background())
+		start := time.Now()
 		// 执行处理逻辑
 		go func() {
-			start := time.Now()
 			for _, f := range *funcs {
 				if w.isAbort {
 					break
 				}
 				f(w)
 			}
+			done()
+		}()
+
+		select {
+		// 处理完成
+		case <-doneCtx.Done():
 			cost := time.Since(start)
 			logInfo := "success"
 			if w.statusCode != dataType.Success {
 				logInfo = w.response.(string)
 			}
 			handleLog(w.statusCode, w.Conn.conn.RemoteAddr().String(), w.Request.Method, logInfo, cost)
-			// 处理完成信号
-			defer func() {
-				c <- struct{}{}
-			}()
-		}()
-
-		select {
-		// 处理逻辑超时
-		case <-timeoutCtx.Done():
-			w.Result(dataType.Timeout, "timeout")
+			w.returnData(nil)
+		// 处理超时
+		case <-time.After(handleTimeout):
 			handleLog(dataType.Timeout, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "timeout", handleTimeout)
-		// 获取到完成信号
-		case <-c:
-			break
+			r := &resp{
+				Id:         w.Request.Id,
+				StatusCode: dataType.Timeout,
+				Data:       "timeout",
+			}
+			v, _ := json.Marshal(r)
+			w.returnData(v)
 		}
 
 	} else {
 		w.Result(dataType.NotFound, "not found")
 		handleLog(1, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "notfound", 0)
+		w.returnData(nil)
 	}
-	w.returnData()
 }
 
 // NewWContext 创建ws上下文
-func NewWContext(conn *Connection, data payload) *WContext {
+func NewWContext(conn *Connection, data *payload) *WContext {
 	return &WContext{Conn: conn, Request: data, attribute: make(map[string]interface{})}
 }
 
@@ -244,7 +252,7 @@ type Connection struct {
 	lifetimeCtx *context.Context
 	cancel      context.CancelFunc
 	lock        *sync.RWMutex // 对象读写锁
-	msgChan     chan []byte   // 信息信道
+	msgChan     chan *payload // 信息信道
 	heartChan   chan int64    // 心跳监测信道
 	closed      bool
 
@@ -265,8 +273,8 @@ func NewConnection(conn *websocket.Conn) *Connection {
 		conn:        conn,
 		lifetimeCtx: &ctx,
 		cancel:      cancel,
-		msgChan:     make(chan []byte, config.Conf.Server.WsMaxWaiting),
-		heartChan:   make(chan int64, config.Conf.Server.WsMaxWaiting),
+		msgChan:     make(chan *payload, config.Conf.Server.Websocket.WsMaxWaiting),
+		heartChan:   make(chan int64, config.Conf.Server.Websocket.WsMaxWaiting),
 		lock:        &sync.RWMutex{},
 		user:        &userInfo{userId: 0, permission: make([]string, 0), lifetimeHolder: nil, cancel: nil},
 		connectTime: time.Now(),
@@ -283,7 +291,10 @@ func (c *Connection) Subscribe(name string) bool {
 	if !ok {
 		return false
 	}
-	pub.Subscribe(c)
+	err := pub.Subscribe(c)
+	if err != nil {
+		return false
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.channels[name] = pub
@@ -310,8 +321,7 @@ func (c *Connection) UnSubscribe(name string) {
 	}
 	delete(c.channels, name)
 	c.lock.Unlock()
-
-	pub.UnSubscribe(c)
+	_ = pub.UnSubscribe(c)
 }
 
 // Publish 在已订阅事件中发布信息
@@ -322,8 +332,8 @@ func (c *Connection) Publish(name string, data string) error {
 		return errors.New("channel not found in subscribed")
 	}
 	c.lock.RUnlock()
-	pub.Publish(data, c)
-	return nil
+	err := pub.Publish(data, c)
+	return err
 }
 
 // Login 连接登录
@@ -428,12 +438,25 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 		}
 
 	}
+	var req payload
+	err := json.Unmarshal(msg, &req)
+	if err != nil {
+		msg := fmt.Sprintf("wrong message: %s", string(msg))
+		res, _ := json.Marshal(resp{
+			Id:         "",
+			StatusCode: dataType.WrongBody,
+			Data:       msg,
+		})
+		_ = c.Send(res)
+		handleLog(dataType.WrongBody, c.conn.RemoteAddr().String(), "-", msg, 0)
+		return
+	}
 	select {
-	case c.msgChan <- msg:
+	case c.msgChan <- &req:
 		return
 	case <-time.After(1 * time.Second):
 		var m = resp{
-			Id:         "",
+			Id:         req.Id,
 			StatusCode: dataType.TooManyRequests,
 			Data:       "too much request",
 		}
@@ -486,23 +509,10 @@ func (c *Connection) handle() {
 			loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
 			return
 		case msg := <-c.msgChan:
-			var data payload
-			err := json.Unmarshal(msg, &data)
-			// 错误请求格式
-			if err != nil {
-				msg := fmt.Sprintf("wrong message: %s", string(msg))
-				res, _ := json.Marshal(resp{
-					Id:         "",
-					StatusCode: dataType.WrongBody,
-					Data:       msg,
-				})
-				_ = c.Send(res)
-				handleLog(dataType.WrongBody, c.conn.RemoteAddr().String(), "-", msg, 0)
-			} else {
-				// 单个请求的处理
-				ctx := NewWContext(c, data)
-				go ctx.handle()
-			}
+			// 单个请求的处理
+			ctx := NewWContext(c, msg)
+			go ctx.handle()
+
 		}
 	}
 }
@@ -557,13 +567,16 @@ func (c *Connection) Disconnect() {
 	if c.conn != nil {
 		err := c.conn.Close()
 		if err != nil {
-			loguru.SimpleLog(loguru.Error, "WS", "connect close err: "+err.Error())
+			loguru.SimpleLog(loguru.Trace, "WS", "connect close err: "+err.Error())
 		}
 	}
 	for _, pub := range c.channels {
-		pub.UnSubscribe(c)
+		err := pub.UnSubscribe(c)
+		if err != nil {
+			loguru.SimpleLog(loguru.Trace, "WS", "unsubscribe err: "+err.Error())
+		}
 	}
-	c.channels = make(map[string]Pub)
+	clear(c.channels)
 	// 主动取消生命周期上下文
 	c.cancel()
 	c.closed = true
@@ -576,13 +589,13 @@ func UpgradeConn(c *gin.Context) {
 	conn, err := upper.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: 1, Message: "upgrade failed",
+			Code: dataType.Unknown, Message: "upgrade failed",
 		})
 		return
 	}
 	// 设置ping响应
 	conn.SetPingHandler(func(appData string) error {
-		loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
+		loguru.SimpleLog(loguru.Trace, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
 		return conn.WriteMessage(websocket.TextMessage, []byte("pong"))
 	})
 	connect := NewConnection(conn)
@@ -606,4 +619,33 @@ func RegisterHandler(key string, f ...handleFunc) {
 	var h handler = f
 	tasks[key] = &h
 
+}
+
+type Group struct {
+	node    string
+	middles []handleFunc
+}
+
+func (g *Group) Use(f ...handleFunc) {
+	g.middles = append(g.middles, f...)
+}
+
+func (g *Group) Group(name string, f ...handleFunc) *Group {
+	key := fmt.Sprintf("%s.%s", name, g.node)
+	return &Group{
+		node:    fmt.Sprintf("%s.%s", g.node, key),
+		middles: append(g.middles, f...),
+	}
+}
+
+func (g *Group) Register(route string, f ...handleFunc) {
+	key := fmt.Sprintf("%s.%s", g.node, route)
+	RegisterHandler(key, append(g.middles, f...)...)
+}
+
+func NewGroup(name string, f ...handleFunc) *Group {
+	return &Group{
+		node:    name,
+		middles: append([]handleFunc{}, f...),
+	}
 }
