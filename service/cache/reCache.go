@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"ginWeb/utils/database"
+	"reflect"
 	"time"
 )
 
@@ -40,7 +41,7 @@ func Get(namespace string, key string) (interface{}, error) {
 	if resp.Err() != nil {
 		return nil, resp.Err()
 	}
-	return nil, nil
+	return resp.Val(), nil
 }
 
 func GetDel(namespace string, key string) (interface{}, error) {
@@ -48,7 +49,7 @@ func GetDel(namespace string, key string) (interface{}, error) {
 	if resp.Err() != nil {
 		return nil, resp.Err()
 	}
-	return nil, nil
+	return resp.Val(), nil
 }
 
 func Del(namespace string, key string) error {
@@ -73,4 +74,30 @@ func Decr(namespace string, key string) (int64, error) {
 		return 0, resp.Err()
 	}
 	return resp.Val(), nil
+}
+
+// CustomExecute TODO:反射实现自定义调用
+func CustomExecute(method string, params ...interface{}) (interface{}, error) {
+	defer func() {
+		if r := recover(); r != nil {
+
+		}
+	}()
+	obj := reflect.TypeOf(database.Rdb)
+	for i := 0; i < obj.NumMethod(); i++ {
+		f := obj.Method(i)
+		if f.Name != method {
+			continue
+		}
+		funcParams := make([]reflect.Value, len(params))
+		for j := 0; i < len(params); i++ {
+			funcParams[j] = reflect.ValueOf(params[j])
+		}
+		resp := f.Func.Call(funcParams)
+		if len(resp) == 0 {
+			return nil, fmt.Errorf("failed to call method %s", f.Name)
+		}
+		return resp, nil
+	}
+	return nil, fmt.Errorf("method '%s' of redis not found", method)
 }

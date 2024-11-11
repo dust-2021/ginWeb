@@ -8,6 +8,7 @@ import (
 	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
 	"github.com/google/uuid"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -63,6 +64,30 @@ func (r *Room) Owner() (int64, string) {
 	return userId, username
 }
 
+type mateInfo struct {
+	Name  string `json:"name"`
+	Id    string `json:"id"`
+	Addr  string `json:"addr"`
+	Owner bool   `json:"owner"`
+}
+
+// Mates 所有成员
+func (r *Room) Mates() []mateInfo {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	resp := make([]mateInfo, len(r.subs))
+	for c := range r.subs {
+		id, name, _ := c.UserInfo()
+		resp = append(resp, mateInfo{
+			Name:  name,
+			Id:    strconv.FormatInt(id, 10),
+			Addr:  c.RemoteAddr().String(),
+			Owner: c == r.owner,
+		})
+	}
+	return resp
+}
+
 // 生命周期管理
 func (r *Room) closer() {
 	select {
@@ -88,6 +113,8 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", userId, ownerId))
 	return nil
 }
+
+// UnSubscribe 退出房间
 func (r *Room) UnSubscribe(c *wes.Connection) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -110,9 +137,10 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 	return nil
 }
 
+// Publish 向房间内所有成员发送消息
 func (r *Room) Publish(v string, sender *wes.Connection) error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
+	r.lock.RLock()
+	defer r.lock.RUnlock()
 	if r.closed {
 		return errors.New("room is closed")
 	}
@@ -153,11 +181,15 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 			shouldDelete = append(shouldDelete, c)
 		}
 	}
-	// 删除发送失败连接
-	for _, conn := range shouldDelete {
-		//loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("delete subscribe \"%s\" from %s", conn.RemoteAddr().String(), p.Name))
-		delete(r.subs, conn)
-	}
+	// 延迟删除发送失败连接
+	go func() {
+		r.lock.Lock()
+		defer r.lock.Unlock()
+		for _, conn := range shouldDelete {
+			//loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("delete subscribe \"%s\" from %s", conn.RemoteAddr().String(), p.Name))
+			delete(r.subs, conn)
+		}
+	}()
 	return nil
 }
 
@@ -207,6 +239,7 @@ func NewRoom(owner *wes.Connection) (*Room, error) {
 	}
 	roomName := uuid.New().String()
 	r := &Room{
+		uuid:  roomName,
 		subs:  make(map[*wes.Connection]struct{}),
 		owner: owner,
 	}

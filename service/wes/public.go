@@ -9,6 +9,7 @@ import (
 	"ginWeb/service/dataType"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"net"
 	"net/http"
@@ -247,6 +248,7 @@ type userInfo struct {
 
 // Connection ws连接对象
 type Connection struct {
+	Uuid string
 	conn *websocket.Conn
 	// 生命周期上下文
 	lifetimeCtx *context.Context
@@ -271,6 +273,7 @@ func NewConnection(conn *websocket.Conn) *Connection {
 	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
 	c := &Connection{
 		conn:        conn,
+		Uuid:        uuid.New().String(),
 		lifetimeCtx: &ctx,
 		cancel:      cancel,
 		msgChan:     make(chan *payload, config.Conf.Server.Websocket.WsMaxWaiting),

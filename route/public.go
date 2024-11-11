@@ -1,6 +1,7 @@
 package route
 
 import (
+	"ginWeb/config"
 	"ginWeb/controller/perm"
 	"ginWeb/controller/trade"
 	"ginWeb/controller/trade/spot"
@@ -59,12 +60,19 @@ func InitWs(g *gin.Engine) {
 
 	roomGroup := wes.NewGroup("room")
 	roomGroup.Use(middleware.NewLoginStatus().WsHandle)
+	roomGroup.Register("create", ws.CreateRoom)
+	roomGroup.Register("in", ws.GetInRoom)
+	roomGroup.Register("out", ws.GetOutRoom)
+	roomGroup.Register("close", ws.CloseRoom)
+	roomGroup.Register("mates", ws.RoomMate)
 
 	// 注册订阅事件
-	subscribe.NewPublisher("hello", "1s", func() string {
-		return "hello"
-	})
-	subscribe.NewPublisher("time", "2 * * * * *", func() string {
+	if config.Conf.Server.Debug {
+		subscribe.NewPublisher("hello", "1s", func() string {
+			return "hello"
+		})
+	}
+	subscribe.NewPublisher("time", "*/10 * * * * *", func() string {
 		return time.Now().Format("2006-01-02 15:04:05.0000")
 	})
 

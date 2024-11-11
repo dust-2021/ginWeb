@@ -1,6 +1,10 @@
 .idea
 config.yaml
+product.yaml
+
 *.exe
+app
+
 *.log
 *.pyc
 *.pyi

@@ -3,10 +3,12 @@ package ws
 import (
 	"ginWeb/model"
 	"ginWeb/model/systemMode"
+	reCache "ginWeb/service/cache"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/utils/auth"
 	"ginWeb/utils/database"
+	"strconv"
 	"time"
 )
 
@@ -33,6 +35,10 @@ func Login(w *wes.WContext) {
 	pwd, err := auth.HashPassword(password)
 	if result.Error != nil || err != nil || pwd != record.PasswordHash {
 		w.Result(dataType.WrongData, "invalid username or password")
+	}
+	_, err = reCache.Get("wsOnline", strconv.FormatInt(record.Id, 10))
+	if err != nil {
+		w.Result(dataType.AlreadyExist, err.Error())
 	}
 	// 查询权限
 	permissions, err := model.GetPermissionById(record.Id)
