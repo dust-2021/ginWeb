@@ -3,6 +3,7 @@ package ws
 import (
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
+	"ginWeb/service/wes/subscribe"
 	"strings"
 )
 
@@ -14,7 +15,10 @@ func SubHandle(w *wes.WContext) {
 	}
 	var failedKeys = make([]string, 0)
 	for _, name := range w.Request.Params {
-		if f := w.Conn.Subscribe(name); !f {
+		pub, ok := subscribe.GetPub(name)
+		if ok {
+			_ = pub.Subscribe(w.Conn)
+		} else {
 			failedKeys = append(failedKeys, name)
 		}
 	}
@@ -32,7 +36,10 @@ func UnsubHandle(w *wes.WContext) {
 	}
 
 	for _, name := range w.Request.Params {
-		w.Conn.UnSubscribe(name)
+		pub, ok := subscribe.GetPub(name)
+		if ok {
+			_ = pub.UnSubscribe(w.Conn)
+		}
 	}
 	w.Result(dataType.Success, "success")
 }
@@ -46,9 +53,14 @@ func Broadcast(w *wes.WContext) {
 	}
 	name := w.Request.Params[0]
 	msg := w.Request.Params[1]
-	err := w.Conn.Publish(name, msg)
+	pub, ok := subscribe.GetPub(name)
+	if !ok {
+		w.Result(dataType.NotFound, "not found pub")
+		return
+	}
+	err := pub.Publish(msg, w.Conn)
 	if err != nil {
-		w.Result(dataType.WrongBody, "broadcast failed")
+		w.Result(dataType.WrongBody, "broadcast failed:"+err.Error())
 		return
 	}
 	w.Result(dataType.Success, "success")

@@ -13,6 +13,35 @@ import (
 	"time"
 )
 
+// ws已注册订阅事件
+var pubs = make(map[string]Pub)
+
+// 已注册订阅事件读写锁
+var pubsLock = sync.RWMutex{}
+
+// GetPub 查找订阅事件
+func GetPub(name string) (Pub, bool) {
+	pubsLock.RLock()
+	defer pubsLock.RUnlock()
+	pub, ok := pubs[name]
+	return pub, ok
+}
+
+// SetPub 设置订阅事件
+func SetPub(name string, pub Pub) bool {
+	pubsLock.Lock()
+	defer pubsLock.Unlock()
+	if pub == nil {
+		delete(pubs, name)
+		return true
+	}
+	if _, ok := pubs[name]; ok {
+		return false
+	}
+	pubs[name] = pub
+	return true
+}
+
 type resp struct {
 	SenderId   int64       `json:"senderId"`
 	SenderName string      `json:"senderName"`
@@ -20,12 +49,18 @@ type resp struct {
 	Data       interface{} `json:"data"`
 }
 
+type Subscriber struct {
+	Conn  *wes.Connection
+	Pub   *Publisher
+	Muted bool
+}
+
 // Publisher 订阅事件
 type Publisher struct {
 	Name string
 
 	// 订阅事件的ws连接
-	subscribers map[*wes.Connection]struct{}
+	subscribers map[*wes.Connection]*Subscriber
 	// 对象读写锁
 	lock sync.RWMutex
 	// 开启状态
@@ -43,9 +78,20 @@ func (p *Publisher) Subscribe(c *wes.Connection) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if _, ok := p.subscribers[c]; ok {
-		return errors.New("already in room")
+		return errors.New("already subscribed")
 	}
-	p.subscribers[c] = struct{}{}
+	p.subscribers[c] = &Subscriber{
+		Conn:  c,
+		Pub:   p,
+		Muted: true,
+	}
+	// 连接生命周期结束时删除订阅者
+	go func() {
+		select {
+		case <-c.Done():
+			_ = p.UnSubscribe(c)
+		}
+	}()
 	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s subscribe channel %s", c.RemoteAddr().String(), p.Name))
 	return nil
 }
@@ -60,18 +106,21 @@ func (p *Publisher) UnSubscribe(c *wes.Connection) error {
 }
 
 func (p *Publisher) Publish(v string, sender *wes.Connection) error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 	if p.closed {
 		return errors.New("publish closed")
 	}
 	if v == "" {
 		return errors.New("msg is empty")
 	}
-	var shouldDelete = make([]*wes.Connection, 0)
+
 	var senderName = ""
 	var senderId int64 = 0
 	if sender != nil {
+		if sub, ok := p.subscribers[sender]; ok && sub.Muted {
+			return errors.New("you have been muted")
+		}
 		senderId, senderName, _ = sender.UserInfo()
 		if senderId == 0 {
 			senderName = sender.RemoteAddr().String()
@@ -90,15 +139,8 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) error {
 			continue
 		}
 
-		err := c.Send(data)
-		if err != nil {
-			shouldDelete = append(shouldDelete, c)
-		}
-	}
-	// 删除发送失败连接
-	for _, conn := range shouldDelete {
-		//loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("delete subscribe \"%s\" from %s", conn.RemoteAddr().String(), p.Name))
-		delete(p.subscribers, conn)
+		_ = c.Send(data)
+
 	}
 	return nil
 }
@@ -164,11 +206,11 @@ func (p *Publisher) cronDo(cron string) error {
 }
 
 // NewPublisher 注册并启动订阅事件，将f函数结果发送至每个订阅者，d为发送周期, d为空字符串时不会注册为定时事件
-func NewPublisher(name string, d string, f ...func() string) wes.Pub {
+func NewPublisher(name string, d string, f ...func() string) Pub {
 	ctx, cancel := context.WithCancel(context.Background())
 	pub := &Publisher{
 		Name:        name,
-		subscribers: make(map[*wes.Connection]struct{}),
+		subscribers: make(map[*wes.Connection]*Subscriber),
 		lock:        sync.RWMutex{},
 		ctx:         ctx,
 		cancel:      cancel,
@@ -183,6 +225,6 @@ func NewPublisher(name string, d string, f ...func() string) wes.Pub {
 	if err != nil {
 		loguru.SimpleLog(loguru.Fatal, "WS", "failed start pub:"+err.Error())
 	}
-	wes.SetPub(name, pub)
+	SetPub(name, pub)
 	return pub
 }

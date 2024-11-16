@@ -1,0 +1,21 @@
+package subscribe
+
+import "ginWeb/service/wes"
+
+// Pub 事件订阅接口类
+type Pub interface {
+	// Subscribe 订阅该事件
+	Subscribe(connection *wes.Connection) error
+	// UnSubscribe 取消订阅
+	UnSubscribe(connection *wes.Connection) error
+	// Publish 向收听者发送消息
+	Publish(string, *wes.Connection) error
+	// Start 启动事件
+	Start(string) error
+	// Shutdown 关闭事件
+	Shutdown() error
+}
+
+type Sub interface {
+	Muted() bool
+}

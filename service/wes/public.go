@@ -29,35 +29,6 @@ var heartbeat = time.Duration(config.Conf.Server.Websocket.WsHeartbeat) * time.S
 // 登录超时时间
 var loginExpire = time.Duration(config.Conf.Server.Websocket.WsLoginLifetime) * time.Second
 
-// ws已注册订阅事件
-var pubs = make(map[string]Pub)
-
-// 已注册订阅事件读写锁
-var pubsLock = sync.RWMutex{}
-
-// GetPub 查找订阅事件
-func GetPub(name string) (Pub, bool) {
-	pubsLock.RLock()
-	defer pubsLock.RUnlock()
-	pub, ok := pubs[name]
-	return pub, ok
-}
-
-// SetPub 设置订阅事件
-func SetPub(name string, pub Pub) bool {
-	pubsLock.Lock()
-	defer pubsLock.Unlock()
-	if pub == nil {
-		delete(pubs, name)
-		return true
-	}
-	if _, ok := pubs[name]; ok {
-		return false
-	}
-	pubs[name] = pub
-	return true
-}
-
 // ws处理逻辑类型
 type handleFunc func(ctx *WContext)
 
@@ -84,20 +55,6 @@ type resp struct {
 
 func (r *resp) String() string {
 	return fmt.Sprintf("id:%s statusCode:%d data:%v", r.Id, r.StatusCode, r.Data)
-}
-
-// Pub 事件订阅接口类
-type Pub interface {
-	// Subscribe 订阅该事件
-	Subscribe(connection *Connection) error
-	// UnSubscribe 取消订阅
-	UnSubscribe(connection *Connection) error
-	// Publish 向收听者发送消息
-	Publish(string, *Connection) error
-	// Start 启动事件
-	Start(string) error
-	// Shutdown 关闭事件
-	Shutdown() error
 }
 
 // ws格式化日志
@@ -179,14 +136,14 @@ func (w *WContext) handle() {
 			w.Result(dataType.WsResolveFailed, "resolve failed")
 		}
 	}()
-	if funcs, ok := tasks[w.Request.Method]; ok {
+	if functions, ok := tasks[w.Request.Method]; ok {
 
 		// 任务处理计时器
 		doneCtx, done := context.WithCancel(context.Background())
 		start := time.Now()
 		// 执行处理逻辑
 		go func() {
-			for _, f := range *funcs {
+			for _, f := range *functions {
 				if w.isAbort {
 					break
 				}
@@ -263,8 +220,6 @@ type Connection struct {
 	user *userInfo
 	// 连接创建时间
 	connectTime time.Time
-	// 连接频道
-	channels map[string]Pub
 }
 
 // NewConnection 新建连接对象
@@ -281,62 +236,15 @@ func NewConnection(conn *websocket.Conn) *Connection {
 		lock:        &sync.RWMutex{},
 		user:        &userInfo{userId: 0, permission: make([]string, 0), lifetimeHolder: nil, cancel: nil},
 		connectTime: time.Now(),
-		channels:    make(map[string]Pub),
 		address:     conn.RemoteAddr(),
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	return c
 }
 
-// Subscribe 订阅事件
-func (c *Connection) Subscribe(name string) bool {
-	pub, ok := GetPub(name)
-	if !ok {
-		return false
-	}
-	err := pub.Subscribe(c)
-	if err != nil {
-		return false
-	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.channels[name] = pub
-	return true
-}
-
-// Subscribed 已订阅事件名
-func (c *Connection) Subscribed() []string {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	names := make([]string, 0, len(c.channels))
-	for name := range c.channels {
-		names = append(names, name)
-	}
-	return names
-}
-
-// UnSubscribe 取消事件订阅
-func (c *Connection) UnSubscribe(name string) {
-	c.lock.Lock()
-	pub, ok := c.channels[name]
-	if !ok {
-		return
-	}
-	delete(c.channels, name)
-	c.lock.Unlock()
-	_ = pub.UnSubscribe(c)
-}
-
-// Publish 在已订阅事件中发布信息
-func (c *Connection) Publish(name string, data string) error {
-	c.lock.RLock()
-	pub, ok := c.channels[name]
-	if !ok {
-		return errors.New("channel not found in subscribed")
-	}
-	c.lock.RUnlock()
-	err := pub.Publish(data, c)
-	return err
+// Done 连接生命周期
+func (c *Connection) Done() <-chan struct{} {
+	return (*c.lifetimeCtx).Done()
 }
 
 // Login 连接登录
@@ -522,8 +430,6 @@ func (c *Connection) handle() {
 
 // 处理心跳检测返回信息，10秒超时关闭连接
 func (c *Connection) waitHeartbeat(tick int64) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	for {
 		select {
 		case <-(*c.lifetimeCtx).Done():
@@ -535,7 +441,7 @@ func (c *Connection) waitHeartbeat(tick int64) {
 				continue
 			}
 			return
-		case <-ctx.Done():
+		case <-time.After(10 * time.Second):
 			loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("heartbeat failed from %s", c.conn.RemoteAddr().String()))
 			c.Disconnect()
 			return
@@ -573,13 +479,6 @@ func (c *Connection) Disconnect() {
 			loguru.SimpleLog(loguru.Trace, "WS", "connect close err: "+err.Error())
 		}
 	}
-	for _, pub := range c.channels {
-		err := pub.UnSubscribe(c)
-		if err != nil {
-			loguru.SimpleLog(loguru.Trace, "WS", "unsubscribe err: "+err.Error())
-		}
-	}
-	clear(c.channels)
 	// 主动取消生命周期上下文
 	c.cancel()
 	c.closed = true
@@ -624,6 +523,7 @@ func RegisterHandler(key string, f ...handleFunc) {
 
 }
 
+// Group ws处理组
 type Group struct {
 	node    string
 	middles []handleFunc
@@ -633,6 +533,7 @@ func (g *Group) Use(f ...handleFunc) {
 	g.middles = append(g.middles, f...)
 }
 
+// Group 创建一个子组
 func (g *Group) Group(name string, f ...handleFunc) *Group {
 	key := fmt.Sprintf("%s.%s", name, g.node)
 	return &Group{
