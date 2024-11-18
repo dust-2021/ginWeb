@@ -14,13 +14,13 @@ import (
 )
 
 // ws已注册订阅事件
-var pubs = make(map[string]Pub)
+var pubs = make(map[string]*Publisher)
 
 // 已注册订阅事件读写锁
 var pubsLock = sync.RWMutex{}
 
 // GetPub 查找订阅事件
-func GetPub(name string) (Pub, bool) {
+func GetPub(name string) (*Publisher, bool) {
 	pubsLock.RLock()
 	defer pubsLock.RUnlock()
 	pub, ok := pubs[name]
@@ -28,7 +28,7 @@ func GetPub(name string) (Pub, bool) {
 }
 
 // SetPub 设置订阅事件
-func SetPub(name string, pub Pub) bool {
+func SetPub(name string, pub *Publisher) bool {
 	pubsLock.Lock()
 	defer pubsLock.Unlock()
 	if pub == nil {
@@ -206,7 +206,7 @@ func (p *Publisher) cronDo(cron string) error {
 }
 
 // NewPublisher 注册并启动订阅事件，将f函数结果发送至每个订阅者，d为发送周期, d为空字符串时不会注册为定时事件
-func NewPublisher(name string, d string, f ...func() string) Pub {
+func NewPublisher(name string, d string, f ...func() string) *Publisher {
 	ctx, cancel := context.WithCancel(context.Background())
 	pub := &Publisher{
 		Name:        name,
