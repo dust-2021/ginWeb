@@ -3,8 +3,7 @@ package route
 import (
 	"ginWeb/config"
 	"ginWeb/controller/perm"
-	"ginWeb/controller/trade"
-	"ginWeb/controller/trade/spot"
+	"ginWeb/controller/user"
 	"ginWeb/controller/ws"
 	"ginWeb/middleware"
 	"ginWeb/service/wes"
@@ -30,14 +29,8 @@ func InitRoute(g *gin.Engine) {
 	// 系统api组
 	systemApi := sapi.Group("/system")
 	perm.Grant{}.RegisterRoute("/grant", systemApi)
+	user.Users{}.RegisterRoute("/user", systemApi)
 
-	// 交易相关api组
-	tradeApi := sapi.Group("/trade")
-	trade.Account{}.RegisterRoute("/account", tradeApi)
-
-	// binance接口
-	binance := tradeApi.Group("/binance")
-	spot.Price{}.RegisterRoute("/api/v3/ticker/price", binance)
 }
 
 // InitWs 注册ws处理逻辑

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"ginWeb/config"
 	"ginWeb/model/inital"
-	_ "ginWeb/service/exchangeCore"
 	"ginWeb/service/scheduler"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
