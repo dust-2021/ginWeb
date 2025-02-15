@@ -75,7 +75,7 @@ type mateInfo struct {
 func (r *Room) Mates() []mateInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	resp := make([]mateInfo, len(r.subs))
+	resp := make([]mateInfo, 0)
 	for c := range r.subs {
 		id, name, _ := c.UserInfo()
 		resp = append(resp, mateInfo{
@@ -90,11 +90,15 @@ func (r *Room) Mates() []mateInfo {
 
 // 生命周期管理
 func (r *Room) closer() {
-	select {
-	case <-r.refreshCtx.Done():
-		return
-	case <-time.After(time.Minute * 5):
-		_ = r.Shutdown()
+	for {
+		select {
+		// 刷新时间
+		case <-r.refreshCtx.Done():
+			continue
+		case <-time.After(time.Minute * 5):
+			_ = r.Shutdown()
+			return
+		}
 	}
 }
 
@@ -111,6 +115,9 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	}
 	ownerId, _, _ := r.owner.UserInfo()
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", userId, ownerId))
+	c.DoneHook(func() {
+		_ = r.UnSubscribe(c)
+	})
 	return nil
 }
 
@@ -120,20 +127,20 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 	defer r.lock.Unlock()
 
 	delete(r.subs, c)
+	ownerId, _, _ := r.owner.UserInfo()
+	userId, _, _ := c.UserInfo()
 	// 全部退出后关闭room
 	if len(r.subs) == 0 {
 		r.shutdownFree()
 	}
-	if c == r.owner {
+	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %d", userId, ownerId))
+	if c == r.owner && len(r.subs) != 0 {
 		// 推举下一个房主
 		for ele, _ := range r.subs {
 			r.owner = ele
 			break
 		}
 	}
-	ownerId, _, _ := r.owner.UserInfo()
-	userId, _, _ := c.UserInfo()
-	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %d", userId, ownerId))
 	return nil
 }
 
@@ -194,10 +201,10 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 }
 
 // Start 启动
-func (r *Room) Start(string) error {
+func (r *Room) Start() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if !r.closed {
+	if r.closed {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -212,11 +219,11 @@ func (r *Room) Start(string) error {
 func (r *Room) shutdownFree() {
 	r.refresh()
 	clear(r.subs)
-	r.owner = nil
-	r.closed = true
 	id, _, _ := r.owner.UserInfo()
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, id))
 	SetRoom(r.uuid, nil)
+	r.owner = nil
+	r.closed = true
 }
 
 // Shutdown 关闭room
@@ -242,14 +249,15 @@ func NewRoom(owner *wes.Connection) (*Room, error) {
 		uuid:  roomName,
 		subs:  make(map[*wes.Connection]struct{}),
 		owner: owner,
+		lock:  sync.RWMutex{},
 	}
 	ok := SetRoom(roomName, r)
 	if !ok {
 		return nil, fmt.Errorf("room exsit")
 	}
-	r.subs[owner] = struct{}{}
+	_ = r.Subscribe(owner)
 
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", username, id, roomName))
-	_ = r.Start("")
+	_ = r.Start()
 	return r, nil
 }

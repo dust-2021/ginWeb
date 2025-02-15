@@ -85,14 +85,10 @@ func (p *Publisher) Subscribe(c *wes.Connection) error {
 		Pub:   p,
 		Muted: true,
 	}
-	// 连接生命周期结束时删除订阅者
-	go func() {
-		select {
-		case <-c.Done():
-			_ = p.UnSubscribe(c)
-		}
-	}()
 	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s subscribe channel %s", c.RemoteAddr().String(), p.Name))
+	c.DoneHook(func() {
+		_ = p.UnSubscribe(c)
+	})
 	return nil
 }
 

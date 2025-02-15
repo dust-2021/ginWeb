@@ -6,6 +6,7 @@ import (
 	"ginWeb/utils/auth"
 	"ginWeb/utils/database"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Users struct {
@@ -18,8 +19,8 @@ type data struct {
 }
 
 func (u Users) Create(ctx *gin.Context) {
-	var data data
-	err := ctx.ShouldBind(&data)
+	var reqData data
+	err := ctx.ShouldBindJSON(&reqData)
 	if err != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code:    dataType.WrongData,
@@ -28,7 +29,7 @@ func (u Users) Create(ctx *gin.Context) {
 		return
 	}
 
-	hashed, err := auth.HashPassword(data.Password)
+	hashed, err := auth.HashPassword(reqData.Password)
 	if err != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code:    dataType.WrongData,
@@ -37,8 +38,9 @@ func (u Users) Create(ctx *gin.Context) {
 		return
 	}
 	newUser := systemMode.User{
-		Phone:        data.Phone,
-		Email:        data.Email,
+		Uuid:         uuid.New().String(),
+		Phone:        reqData.Phone,
+		Email:        reqData.Email,
 		PasswordHash: hashed,
 		Available:    true,
 	}

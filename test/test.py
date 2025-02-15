@@ -1,7 +1,5 @@
 import asyncio
 import json
-import time
-import datetime
 
 import aiohttp
 
@@ -83,6 +81,17 @@ async def sender():
     await session.close()
 
 
+async def create_user():
+    session = aiohttp.ClientSession()
+    token = await login(session)
+
+    session.headers["Token"] = token
+    resp = await session.post('http://127.0.0.1:8000/sapi/system/user/create', data=json.dumps({
+        "phone": '12345', 'password': '123456', 'email': '111@qq.com'
+    }))
+    print(await resp.text())
+    await session.close()
+
+
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.gather(listener(), sender()))
+    asyncio.run(create_user())

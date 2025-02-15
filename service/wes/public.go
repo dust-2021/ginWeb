@@ -220,6 +220,8 @@ type Connection struct {
 	user *userInfo
 	// 连接创建时间
 	connectTime time.Time
+	// 断开连接时的任务
+	doneHooks []func()
 }
 
 // NewConnection 新建连接对象
@@ -416,7 +418,6 @@ func (c *Connection) handle() {
 		select {
 		// 生命周期结束
 		case <-(*c.lifetimeCtx).Done():
-			c.Disconnect()
 			loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
 			return
 		case msg := <-c.msgChan:
@@ -466,13 +467,25 @@ func (c *Connection) heartbeat() {
 	}()
 }
 
+// DoneHook 添加断开连接钩子函数
+func (c *Connection) DoneHook(f func()) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.doneHooks = append(c.doneHooks, f)
+}
+
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
+
+	for _, hook := range c.doneHooks {
+		hook()
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.closed {
 		return
 	}
+
 	if c.conn != nil {
 		err := c.conn.Close()
 		if err != nil {
