@@ -26,6 +26,7 @@ type Config struct {
 			Path  string `yaml:"path"`  // 日志文件位置
 			Level string `yaml:"level"` // 日志等级
 		}
+		// 管理员账号信息
 		AdminUser struct {
 			Phone    string `yaml:"phone"`
 			Email    string `yaml:"email"`
@@ -40,10 +41,6 @@ type Config struct {
 		Host     string `yaml:"host"`
 		Port     uint16 `yaml:"port"`
 		Password string `yaml:"password"`
-	}
-	// 交易所相关配置
-	Exchange struct {
-		Proxy string `yaml:"proxy"`
 	}
 }
 
