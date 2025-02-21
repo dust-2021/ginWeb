@@ -7,7 +7,12 @@ import (
 )
 
 func CreateRoom(w *wes.WContext) {
-	room, err := subscribe.NewRoom(w.Conn)
+	if len(w.Request.Params) == 0 {
+		w.Result(dataType.WrongBody, "Room Create Failed without title")
+		return
+	}
+	roomName := w.Request.Params[0]
+	room, err := subscribe.NewRoom(w.Conn, roomName)
 	if err != nil {
 		w.Result(dataType.Unknown, err.Error())
 		return
@@ -64,8 +69,7 @@ func CloseRoom(w *wes.WContext) {
 		w.Result(dataType.NotFound, "not found")
 		return
 	}
-	userId, _, _ := w.Conn.UserInfo()
-	if id, _ := room.Owner(); id != userId {
+	if room.Owner.UserId != w.Conn.UserId {
 		w.Result(dataType.DeniedByPermission, "you are not room owner")
 		return
 	}
@@ -84,5 +88,22 @@ func RoomMate(w *wes.WContext) {
 		w.Result(dataType.NotFound, "not found")
 		return
 	}
-	w.Result(dataType.Success, room.Mates())
+	if !room.ExistMember(w.Conn) {
+		w.Result(dataType.DeniedByPermission, "not in room")
+		return
+	}
+	resp := struct {
+		RoomUUID string               `json:"roomUuid"`
+		RoomName string               `json:"RoomName"`
+		RoomMate []subscribe.MateInfo `json:"RoomMate"`
+	}{
+		RoomUUID: room.UUID(),
+		RoomName: room.Title,
+		RoomMate: room.Mates(),
+	}
+	w.Result(dataType.Success, resp)
+}
+
+func ListRoom(w *wes.WContext) {
+	w.Result(dataType.Success, subscribe.RoomInfo())
 }

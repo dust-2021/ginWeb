@@ -40,11 +40,39 @@ func SetRoom(name string, room *Room) bool {
 	return true
 }
 
+type roomInfo struct {
+	RoomID      string `json:"roomId"`
+	RoomTitle   string `json:"roomTitle"`
+	OwnerID     int64  `json:"ownerId"`
+	OwnerName   string `json:"ownerName"`
+	MemberCount int    `json:"memberCount"`
+}
+
+// RoomInfo 返回所有房间信息
+func RoomInfo() []roomInfo {
+	roomsLock.RLock()
+	defer roomsLock.RUnlock()
+	var infos []roomInfo
+	for _, room := range rooms {
+
+		item := roomInfo{
+			RoomID:      room.uuid,
+			RoomTitle:   room.Title,
+			OwnerID:     room.Owner.UserId,
+			OwnerName:   room.Owner.UserName,
+			MemberCount: len(room.subs),
+		}
+		infos = append(infos, item)
+	}
+	return infos
+}
+
 type Room struct {
 	uuid  string
+	Title string
 	subs  map[*wes.Connection]struct{}
 	lock  sync.RWMutex
-	owner *wes.Connection
+	Owner *wes.Connection
 
 	refreshCtx context.Context
 	refresh    context.CancelFunc
@@ -57,14 +85,14 @@ func (r *Room) UUID() string {
 	return r.uuid
 }
 
-func (r *Room) Owner() (int64, string) {
+func (r *Room) ExistMember(c *wes.Connection) bool {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	userId, username, _ := r.owner.UserInfo()
-	return userId, username
+	_, ok := r.subs[c]
+	return ok
 }
 
-type mateInfo struct {
+type MateInfo struct {
 	Name  string `json:"name"`
 	Id    string `json:"id"`
 	Addr  string `json:"addr"`
@@ -72,17 +100,16 @@ type mateInfo struct {
 }
 
 // Mates 所有成员
-func (r *Room) Mates() []mateInfo {
+func (r *Room) Mates() []MateInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	resp := make([]mateInfo, 0)
+	resp := make([]MateInfo, 0)
 	for c := range r.subs {
-		id, name, _ := c.UserInfo()
-		resp = append(resp, mateInfo{
-			Name:  name,
-			Id:    strconv.FormatInt(id, 10),
+		resp = append(resp, MateInfo{
+			Name:  c.UserName,
+			Id:    strconv.FormatInt(c.UserId, 10),
 			Addr:  c.RemoteAddr().String(),
-			Owner: c == r.owner,
+			Owner: c == r.Owner,
 		})
 	}
 	return resp
@@ -102,19 +129,15 @@ func (r *Room) closer() {
 	}
 }
 
+// Subscribe 订阅房间
 func (r *Room) Subscribe(c *wes.Connection) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if _, ok := r.subs[c]; ok {
-		return errors.New("already in room")
+		return nil
 	}
 	r.subs[c] = struct{}{}
-	userId, _, _ := c.UserInfo()
-	if userId == 0 {
-		return errors.New("without user info")
-	}
-	ownerId, _, _ := r.owner.UserInfo()
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", userId, ownerId))
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", c.UserId, r.Owner.UserId))
 	c.DoneHook(func() {
 		_ = r.UnSubscribe(c)
 	})
@@ -126,18 +149,19 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
+	if _, ok := r.subs[c]; !ok {
+		return nil
+	}
+	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %d", c.UserId, r.Owner.UserId))
 	delete(r.subs, c)
-	ownerId, _, _ := r.owner.UserInfo()
-	userId, _, _ := c.UserInfo()
 	// 全部退出后关闭room
 	if len(r.subs) == 0 {
 		r.shutdownFree()
 	}
-	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %d", userId, ownerId))
-	if c == r.owner && len(r.subs) != 0 {
+	if c == r.Owner && len(r.subs) != 0 {
 		// 推举下一个房主
 		for ele, _ := range r.subs {
-			r.owner = ele
+			r.Owner = ele
 			break
 		}
 	}
@@ -162,17 +186,9 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 	go r.closer()
 
 	var shouldDelete = make([]*wes.Connection, 0)
-	var senderName = ""
-	var senderId int64 = 0
-	if sender != nil {
-		senderId, senderName, _ = sender.UserInfo()
-		if senderId == 0 {
-			return errors.New("sender is nil")
-		}
-	}
 	var res = resp{
-		SenderId:   senderId,
-		SenderName: senderName,
+		SenderId:   sender.UserId,
+		SenderName: sender.UserName,
 		Timestamp:  time.Now().UnixMilli(),
 		Data:       v,
 	}
@@ -219,10 +235,9 @@ func (r *Room) Start() error {
 func (r *Room) shutdownFree() {
 	r.refresh()
 	clear(r.subs)
-	id, _, _ := r.owner.UserInfo()
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, id))
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, r.Owner.UserId))
 	SetRoom(r.uuid, nil)
-	r.owner = nil
+	r.Owner = nil
 	r.closed = true
 }
 
@@ -238,17 +253,13 @@ func (r *Room) Shutdown() error {
 }
 
 // NewRoom 创建room并开启，已存在则返回false
-func NewRoom(owner *wes.Connection) (*Room, error) {
-
-	id, username, _ := owner.UserInfo()
-	if id == 0 {
-		return nil, fmt.Errorf("no user info")
-	}
+func NewRoom(owner *wes.Connection, title string) (*Room, error) {
 	roomName := uuid.New().String()
 	r := &Room{
 		uuid:  roomName,
+		Title: title,
 		subs:  make(map[*wes.Connection]struct{}),
-		owner: owner,
+		Owner: owner,
 		lock:  sync.RWMutex{},
 	}
 	ok := SetRoom(roomName, r)
@@ -257,7 +268,7 @@ func NewRoom(owner *wes.Connection) (*Room, error) {
 	}
 	_ = r.Subscribe(owner)
 
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", username, id, roomName))
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
 	_ = r.Start()
 	return r, nil
 }

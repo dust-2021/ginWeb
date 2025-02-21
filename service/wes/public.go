@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"ginWeb/config"
+	"ginWeb/model"
+	"ginWeb/model/systemMode"
 	"ginWeb/service/dataType"
+	"ginWeb/utils/auth"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -141,7 +144,7 @@ func (w *WContext) handle() {
 		// 任务处理计时器
 		doneCtx, done := context.WithCancel(context.Background())
 		start := time.Now()
-		// 执行处理逻辑
+		// 同步执行处理逻辑
 		go func() {
 			for _, f := range *functions {
 				if w.isAbort {
@@ -195,14 +198,6 @@ var upper = &websocket.Upgrader{
 	},
 }
 
-type userInfo struct {
-	userId         int64
-	userName       string
-	permission     []string
-	lifetimeHolder context.Context
-	cancel         context.CancelFunc
-}
-
 // Connection ws连接对象
 type Connection struct {
 	Uuid string
@@ -217,28 +212,34 @@ type Connection struct {
 
 	address net.Addr
 	// 登录信息
-	user *userInfo
+	UserId         int64
+	UserName       string
+	UserPermission []string
 	// 连接创建时间
 	connectTime time.Time
 	// 断开连接时的任务
-	doneHooks []func()
+	doneHooks   []func()
+	logoutHooks []func()
 }
 
 // NewConnection 新建连接对象
-func NewConnection(conn *websocket.Conn) *Connection {
+func NewConnection(conn *websocket.Conn, user *systemMode.User) *Connection {
 	// 创建生命周期管理上下文
 	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
+	perms, _ := model.GetPermissionById(user.Id)
 	c := &Connection{
-		conn:        conn,
-		Uuid:        uuid.New().String(),
-		lifetimeCtx: &ctx,
-		cancel:      cancel,
-		msgChan:     make(chan *payload, config.Conf.Server.Websocket.WsMaxWaiting),
-		heartChan:   make(chan int64, config.Conf.Server.Websocket.WsMaxWaiting),
-		lock:        &sync.RWMutex{},
-		user:        &userInfo{userId: 0, permission: make([]string, 0), lifetimeHolder: nil, cancel: nil},
-		connectTime: time.Now(),
-		address:     conn.RemoteAddr(),
+		conn:           conn,
+		Uuid:           uuid.New().String(),
+		lifetimeCtx:    &ctx,
+		cancel:         cancel,
+		msgChan:        make(chan *payload, config.Conf.Server.Websocket.WsMaxWaiting),
+		heartChan:      make(chan int64, config.Conf.Server.Websocket.WsMaxWaiting),
+		lock:           &sync.RWMutex{},
+		connectTime:    time.Now(),
+		address:        conn.RemoteAddr(),
+		UserId:         user.Id,
+		UserName:       user.Username,
+		UserPermission: perms,
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	return c
@@ -247,65 +248,6 @@ func NewConnection(conn *websocket.Conn) *Connection {
 // Done 连接生命周期
 func (c *Connection) Done() <-chan struct{} {
 	return (*c.lifetimeCtx).Done()
-}
-
-// Login 连接登录
-func (c *Connection) Login(id int64, username string, permission []string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	// 取消已登录信息
-	if c.user.userId != 0 {
-		c.user.cancel()
-	}
-
-	c.user.userId = id
-	c.user.userName = username
-	c.user.permission = permission
-	ctx, cancel := context.WithTimeout(context.Background(), loginExpire)
-	c.user.lifetimeHolder = ctx
-	c.user.cancel = cancel
-
-	// 登录超时
-	go func() {
-		select {
-		case <-ctx.Done():
-			loguru.SimpleLog(loguru.Debug, "WS", "login expire")
-		case <-(*c.lifetimeCtx).Done():
-			cancel()
-		}
-	}()
-}
-
-// UserInfo 返回登录信息：id，用户名，权限，未登录则id为0
-func (c *Connection) UserInfo() (int64, string, []string) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	if c.user.userId == 0 {
-		return 0, "", nil
-	}
-	return c.user.userId, c.user.userName, c.user.permission
-}
-
-// Logout 连接退出登录
-func (c *Connection) Logout() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.user.userId == 0 {
-		return
-	}
-	c.user.cancel()
-	c.user.userId = 0
-	c.user.permission = nil
-	c.user.lifetimeHolder = nil
-	c.user.cancel = nil
-}
-
-// LoginStatus 连接登录状态
-func (c *Connection) LoginStatus() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.user.userId != 0
 }
 
 // Send 发送消息
@@ -476,7 +418,6 @@ func (c *Connection) DoneHook(f func()) {
 
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
-
 	for _, hook := range c.doneHooks {
 		hook()
 	}
@@ -513,7 +454,22 @@ func UpgradeConn(c *gin.Context) {
 		loguru.SimpleLog(loguru.Trace, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
 		return conn.WriteMessage(websocket.TextMessage, []byte("pong"))
 	})
-	connect := NewConnection(conn)
+	tokenData, ok := c.Get("token")
+	if !ok {
+		c.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: dataType.NoToken, Message: "token not found",
+		})
+		return
+	}
+	token := tokenData.(*auth.Token)
+	user, err := systemMode.GetUserByID(token.UserId)
+	if err != nil {
+		c.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code: dataType.WrongToken, Message: err.Error(),
+		})
+		return
+	}
+	connect := NewConnection(conn, user)
 	// 设置连接关闭时调用管理对象的Disconnect方法
 	conn.SetCloseHandler(func(code int, text string) error {
 		connect.Disconnect()
@@ -542,6 +498,7 @@ type Group struct {
 	middles []handleFunc
 }
 
+// Use 添加中间件
 func (g *Group) Use(f ...handleFunc) {
 	g.middles = append(g.middles, f...)
 }
@@ -555,11 +512,13 @@ func (g *Group) Group(name string, f ...handleFunc) *Group {
 	}
 }
 
+// Register 在组上创建处理函数
 func (g *Group) Register(route string, f ...handleFunc) {
 	key := fmt.Sprintf("%s.%s", g.node, route)
 	RegisterHandler(key, append(g.middles, f...)...)
 }
 
+// NewGroup 新建组
 func NewGroup(name string, f ...handleFunc) *Group {
 	return &Group{
 		node:    name,

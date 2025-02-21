@@ -37,13 +37,13 @@ func InitRoute(g *gin.Engine) {
 func InitWs(g *gin.Engine) {
 	// websocket
 	g.Handle("GET", "/ws",
-		middleware.NewIpLimiter(10, 0, 0, "ws").HttpHandle, wes.UpgradeConn)
+		middleware.NewIpLimiter(10, 0, 0, "ws").HttpHandle,
+		middleware.NewLoginStatus().HttpHandle,
+		wes.UpgradeConn)
 
 	baseGroup := wes.NewGroup("base")
 	baseGroup.Register("hello", ws.Hello)
-	baseGroup.Register("login", ws.Login)
 	baseGroup.Register("time", ws.ServerTime)
-	baseGroup.Register("logout", middleware.NewLoginStatus().WsHandle, ws.Logout)
 
 	channelGroup := wes.NewGroup("channel")
 	channelGroup.Register("broadcast", middleware.NewLoginStatus().WsHandle,
@@ -52,12 +52,12 @@ func InitWs(g *gin.Engine) {
 	channelGroup.Register("unsubscribe", ws.UnsubHandle)
 
 	roomGroup := wes.NewGroup("room")
-	roomGroup.Use(middleware.NewLoginStatus().WsHandle)
 	roomGroup.Register("create", ws.CreateRoom)
 	roomGroup.Register("in", ws.GetInRoom)
 	roomGroup.Register("out", ws.GetOutRoom)
 	roomGroup.Register("close", ws.CloseRoom)
 	roomGroup.Register("mates", ws.RoomMate)
+	roomGroup.Register("list", ws.ListRoom)
 
 	// 注册订阅事件
 	if config.Conf.Server.Debug {

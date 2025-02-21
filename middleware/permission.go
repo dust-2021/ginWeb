@@ -43,8 +43,7 @@ func (p *permission) HttpHandle(c *gin.Context) {
 }
 
 func (p *permission) WsHandle(c *wes.WContext) {
-	_, _, perm := c.Conn.UserInfo()
-	if !p.handle(perm) {
+	if !p.handle(c.Conn.UserPermission) {
 		c.Result(dataType.DeniedByPermission, "denied")
 	}
 }

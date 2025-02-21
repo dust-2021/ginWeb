@@ -13,7 +13,8 @@ type Users struct {
 }
 
 type data struct {
-	Password string `json:"password"`
+	UserName string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
 	Phone    string `json:"phone"`
 	Email    string `json:"email"`
 }
@@ -28,7 +29,13 @@ func (u Users) Create(ctx *gin.Context) {
 		})
 		return
 	}
-
+	if reqData.Phone == "" && reqData.Email == "" {
+		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code:    dataType.WrongData,
+			Message: "phone or email is required",
+		})
+	}
+	// TODO 按需添加邮箱或手机验证
 	hashed, err := auth.HashPassword(reqData.Password)
 	if err != nil {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{

@@ -111,20 +111,19 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) error {
 		return errors.New("msg is empty")
 	}
 
-	var senderName = ""
-	var senderId int64 = 0
-	if sender != nil {
-		if sub, ok := p.subscribers[sender]; ok && sub.Muted {
-			return errors.New("you have been muted")
-		}
-		senderId, senderName, _ = sender.UserInfo()
-		if senderId == 0 {
-			senderName = sender.RemoteAddr().String()
-		}
+	if sub, ok := p.subscribers[sender]; ok && sub.Muted {
+		return errors.New("you have been muted")
 	}
+	var id int64
+	var name string
+	if sender != nil {
+		id = sender.UserId
+		name = sender.UserName
+	}
+
 	var r = resp{
-		SenderId:   senderId,
-		SenderName: senderName,
+		SenderId:   id,
+		SenderName: name,
 		Timestamp:  time.Now().UnixMilli(),
 		Data:       v,
 	}
