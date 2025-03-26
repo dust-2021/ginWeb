@@ -4,9 +4,14 @@ import (
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
+	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
-func CreateRoom(w *wes.WContext) {
+type RoomController struct {
+}
+
+func (r RoomController) CreateRoom(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongBody, "Room Create Failed without title")
 		return
@@ -20,7 +25,7 @@ func CreateRoom(w *wes.WContext) {
 	w.Result(dataType.Success, room.UUID())
 }
 
-func GetInRoom(w *wes.WContext) {
+func (r RoomController) GetInRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
@@ -39,7 +44,7 @@ func GetInRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
-func GetOutRoom(w *wes.WContext) {
+func (r RoomController) GetOutRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
@@ -58,7 +63,7 @@ func GetOutRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
-func CloseRoom(w *wes.WContext) {
+func (r RoomController) CloseRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
@@ -77,7 +82,7 @@ func CloseRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
-func RoomMate(w *wes.WContext) {
+func (r RoomController) RoomMate(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
@@ -104,6 +109,23 @@ func RoomMate(w *wes.WContext) {
 	w.Result(dataType.Success, resp)
 }
 
-func ListRoom(w *wes.WContext) {
-	w.Result(dataType.Success, subscribe.RoomInfo())
+func (r RoomController) ListRoom(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusOK, dataType.JsonRes{
+		Code: dataType.Success,
+		Data: subscribe.RoomInfo(),
+	})
+}
+
+func (r RoomController) RegisterRoute(route string, g *gin.RouterGroup) {
+	g.Group(route).Handle("GET", "list", r.ListRoom)
+
+}
+
+func (r RoomController) RegisterWSRoute(route string, g *wes.Group) {
+	group := g.Group(route)
+	group.Register("in", r.GetInRoom)
+	group.Register("out", r.GetOutRoom)
+	group.Register("close", r.CloseRoom)
+	group.Register("roommate", r.RoomMate)
+	group.Register("create", r.CreateRoom)
 }

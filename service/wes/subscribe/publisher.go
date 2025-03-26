@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"ginWeb/service/dataType"
 	"ginWeb/service/scheduler"
 	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
@@ -42,7 +43,7 @@ func SetPub(name string, pub *Publisher) bool {
 	return true
 }
 
-type resp struct {
+type publisherResp struct {
 	SenderId   int64       `json:"senderId"`
 	SenderName string      `json:"senderName"`
 	Timestamp  int64       `json:"timestamp"`
@@ -121,11 +122,15 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) error {
 		name = sender.UserName
 	}
 
-	var r = resp{
-		SenderId:   id,
-		SenderName: name,
-		Timestamp:  time.Now().UnixMilli(),
-		Data:       v,
+	var r = wes.Resp{
+		Id:         "publish." + p.Name,
+		StatusCode: dataType.Success,
+		Data: publisherResp{
+			SenderId:   id,
+			SenderName: name,
+			Timestamp:  time.Now().UnixMilli(),
+			Data:       v,
+		},
 	}
 	data, _ := json.Marshal(r)
 	for c := range p.subscribers {

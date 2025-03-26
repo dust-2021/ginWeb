@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
 	"github.com/google/uuid"
@@ -186,11 +187,15 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 	go r.closer()
 
 	var shouldDelete = make([]*wes.Connection, 0)
-	var res = resp{
-		SenderId:   sender.UserId,
-		SenderName: sender.UserName,
-		Timestamp:  time.Now().UnixMilli(),
-		Data:       v,
+	var res = wes.Resp{
+		Id:         "publish.room." + r.UUID(),
+		StatusCode: dataType.Success,
+		Data: publisherResp{
+			SenderId:   sender.UserId,
+			SenderName: sender.UserName,
+			Timestamp:  time.Now().UnixMilli(),
+			Data:       v,
+		},
 	}
 	data, _ := json.Marshal(res)
 	for c := range r.subs {
@@ -217,7 +222,7 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 }
 
 // Start 启动
-func (r *Room) Start() error {
+func (r *Room) Start(timer string) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if r.closed {
@@ -269,6 +274,6 @@ func NewRoom(owner *wes.Connection, title string) (*Room, error) {
 	_ = r.Subscribe(owner)
 
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
-	_ = r.Start()
+	_ = r.Start("")
 	return r, nil
 }

@@ -25,7 +25,7 @@ func (receiver Login) V1(c *gin.Context) {
 	var j postData
 	err := c.BindJSON(&j)
 	if err != nil {
-		c.AbortWithStatusJSON(200, dataType.JsonWrong{
+		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{
 			Code: dataType.WrongBody, Message: err.Error(),
 		})
 		return
@@ -49,19 +49,20 @@ func (receiver Login) V1(c *gin.Context) {
 	token := auth.Token{
 		UserId:     u.Id,
 		UserUUID:   u.Uuid,
+		Username:   u.Username,
 		Permission: permissions,
 		Expire:     time.Now().Add(time.Second * time.Duration(config.Conf.Server.TokenExpire)),
 	}
 	data, err := token.Sign()
 	if err != nil {
-		c.AbortWithStatusJSON(200, dataType.JsonWrong{
+		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{
 			Code:    dataType.Unknown,
 			Message: "generate token failed",
 		})
 		return
 	}
 
-	c.JSON(200, dataType.JsonRes{Code: 0, Data: data})
+	c.JSON(200, dataType.JsonRes{Code: dataType.Success, Data: data})
 }
 
 func (receiver Login) RegisterRoute(r string, g *gin.RouterGroup) {

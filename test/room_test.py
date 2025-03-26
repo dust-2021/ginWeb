@@ -27,7 +27,7 @@ async def listener(l: asyncio.Condition):
         }
         await ws.send_str(json.dumps(data))
         print('get in room: ', (await ws.receive()).data)
-        await ws.send_str(json.dumps({'id': 'get mates', 'method': 'room.mates', 'params': [room]}))
+        await ws.send_str(json.dumps({'id': 'get mates', 'method': 'room.roommate', 'params': [room]}))
         print('get mates: ', (await ws.receive()).data)
         await asyncio.sleep(5)
         # count = 0

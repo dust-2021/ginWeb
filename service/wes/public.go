@@ -41,6 +41,16 @@ type handler []handleFunc
 // 已注册的ws处理逻辑
 var tasks = make(map[string]*handler)
 
+// PrintTasks 控制台打印所有ws路由
+func PrintTasks() {
+	if !config.Conf.Server.Debug {
+		return
+	}
+	for k, v := range tasks {
+		fmt.Printf("[WS-debug] %-10s (%v handlers)\n", k, len(*v))
+	}
+}
+
 // 接收的ws报文
 type payload struct {
 	Id        string   `json:"id"`
@@ -49,14 +59,14 @@ type payload struct {
 	Signature string   `json:"signature"`
 }
 
-// ws返回类型
-type resp struct {
+// Resp ws返回类型
+type Resp struct {
 	Id         string      `json:"id"`
 	StatusCode int         `json:"statusCode"`
 	Data       interface{} `json:"data"`
 }
 
-func (r *resp) String() string {
+func (r *Resp) String() string {
 	return fmt.Sprintf("id:%s statusCode:%d data:%v", r.Id, r.StatusCode, r.Data)
 }
 
@@ -102,7 +112,7 @@ func (w *WContext) returnData(v []byte) {
 		if !w.withResult {
 			return
 		}
-		response := resp{
+		response := Resp{
 			Id:         w.Request.Id,
 			StatusCode: w.statusCode,
 			Data:       w.response,
@@ -168,7 +178,7 @@ func (w *WContext) handle() {
 		// 处理超时
 		case <-time.After(handleTimeout):
 			handleLog(dataType.Timeout, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "timeout", handleTimeout)
-			r := &resp{
+			r := &Resp{
 				Id:         w.Request.Id,
 				StatusCode: dataType.Timeout,
 				Data:       "timeout",
@@ -282,7 +292,7 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 		case c.heartChan <- time.Now().Unix():
 			return
 		case <-time.After(1 * time.Second):
-			var m = resp{
+			var m = Resp{
 				Id:         "",
 				StatusCode: dataType.TooManyRequests,
 				Data:       "too much heartbeat",
@@ -297,7 +307,7 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 	err := json.Unmarshal(msg, &req)
 	if err != nil {
 		msg := fmt.Sprintf("wrong message: %s", string(msg))
-		res, _ := json.Marshal(resp{
+		res, _ := json.Marshal(Resp{
 			Id:         "",
 			StatusCode: dataType.WrongBody,
 			Data:       msg,
@@ -310,7 +320,7 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 	case c.msgChan <- &req:
 		return
 	case <-time.After(1 * time.Second):
-		var m = resp{
+		var m = Resp{
 			Id:         req.Id,
 			StatusCode: dataType.TooManyRequests,
 			Data:       "too much request",
@@ -498,6 +508,8 @@ type Group struct {
 	middles []handleFunc
 }
 
+var BasicGroup = &Group{node: "", middles: []handleFunc{}}
+
 // Use 添加中间件
 func (g *Group) Use(f ...handleFunc) {
 	g.middles = append(g.middles, f...)
@@ -505,16 +517,26 @@ func (g *Group) Use(f ...handleFunc) {
 
 // Group 创建一个子组
 func (g *Group) Group(name string, f ...handleFunc) *Group {
-	key := fmt.Sprintf("%s.%s", name, g.node)
+	var key string
+	if g.node == "" {
+		key = name
+	} else {
+		key = fmt.Sprintf("%s.%s", g.node, name)
+	}
 	return &Group{
-		node:    fmt.Sprintf("%s.%s", g.node, key),
+		node:    key,
 		middles: append(g.middles, f...),
 	}
 }
 
 // Register 在组上创建处理函数
 func (g *Group) Register(route string, f ...handleFunc) {
-	key := fmt.Sprintf("%s.%s", g.node, route)
+	var key string
+	if g.node == "" {
+		key = route
+	} else {
+		key = fmt.Sprintf("%s.%s", g.node, route)
+	}
 	RegisterHandler(key, append(g.middles, f...)...)
 }
 

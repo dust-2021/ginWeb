@@ -43,6 +43,7 @@ func pkcs7Padding(ciphertext []byte, blockSize int) []byte {
 type Token struct {
 	UserId     int64                  `json:"userId"`
 	UserUUID   string                 `json:"userUUID"`
+	Username   string                 `json:"username"`
 	Permission []string               `json:"permission"`
 	Data       map[string]interface{} `json:"data"`
 	Expire     time.Time              `json:"expire"`

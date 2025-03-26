@@ -30,34 +30,32 @@ func InitRoute(g *gin.Engine) {
 	systemApi := sapi.Group("/system")
 	perm.Grant{}.RegisterRoute("/grant", systemApi)
 	user.Users{}.RegisterRoute("/user", systemApi)
+	perm.Permission{}.RegisterRoute("/permission", systemApi)
 
 }
 
 // InitWs 注册ws处理逻辑
 func InitWs(g *gin.Engine) {
+	defer wes.PrintTasks()
 	// websocket
 	g.Handle("GET", "/ws",
 		middleware.NewIpLimiter(10, 0, 0, "ws").HttpHandle,
 		middleware.NewLoginStatus().HttpHandle,
 		wes.UpgradeConn)
+	// 用于ws提供的某些http接口
+	wsApi := g.Group("/ws")
+	wsApi.Use(middleware.NewLoginStatus().HttpHandle)
 
 	baseGroup := wes.NewGroup("base")
 	baseGroup.Register("hello", ws.Hello)
 	baseGroup.Register("time", ws.ServerTime)
 
-	channelGroup := wes.NewGroup("channel")
-	channelGroup.Register("broadcast", middleware.NewLoginStatus().WsHandle,
-		middleware.NewPermission([]string{"admin"}).WsHandle, ws.Broadcast)
-	channelGroup.Register("subscribe", ws.SubHandle)
-	channelGroup.Register("unsubscribe", ws.UnsubHandle)
+	channel := ws.ChannelController{}
+	channel.RegisterWSRoute("channel", wes.BasicGroup)
 
-	roomGroup := wes.NewGroup("room")
-	roomGroup.Register("create", ws.CreateRoom)
-	roomGroup.Register("in", ws.GetInRoom)
-	roomGroup.Register("out", ws.GetOutRoom)
-	roomGroup.Register("close", ws.CloseRoom)
-	roomGroup.Register("mates", ws.RoomMate)
-	roomGroup.Register("list", ws.ListRoom)
+	room := ws.RoomController{}
+	room.RegisterWSRoute("room", wes.BasicGroup)
+	room.RegisterRoute("room", wsApi)
 
 	// 注册订阅事件
 	if config.Conf.Server.Debug {

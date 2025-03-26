@@ -1,14 +1,19 @@
 package ws
 
 import (
+	"ginWeb/middleware"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
+	"github.com/gin-gonic/gin"
 	"strings"
 )
 
+type ChannelController struct {
+}
+
 // SubHandle ws订阅事件接口
-func SubHandle(w *wes.WContext) {
+func (c ChannelController) SubHandle(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongData, "without params")
 		return
@@ -29,7 +34,7 @@ func SubHandle(w *wes.WContext) {
 }
 
 // UnsubHandle ws取消事件订阅接口
-func UnsubHandle(w *wes.WContext) {
+func (c ChannelController) UnsubHandle(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongData, "without params")
 		return
@@ -45,7 +50,7 @@ func UnsubHandle(w *wes.WContext) {
 }
 
 // Broadcast 向频道发送消息
-func Broadcast(w *wes.WContext) {
+func (c ChannelController) Broadcast(w *wes.WContext) {
 
 	if len(w.Request.Params) != 2 {
 		w.Result(dataType.WrongBody, "invalid param")
@@ -64,4 +69,16 @@ func Broadcast(w *wes.WContext) {
 		return
 	}
 	w.Result(dataType.Success, "success")
+}
+
+func (c ChannelController) RegisterRoute(r string, g *gin.RouterGroup) {}
+
+func (c ChannelController) RegisterWSRoute(r string, g *wes.Group) {
+
+	group := g.Group(r)
+
+	group.Register("broadcast", middleware.NewLoginStatus().WsHandle,
+		middleware.NewPermission([]string{"channel.broadcast"}).WsHandle, c.Broadcast)
+	group.Register("subscribe", c.SubHandle)
+	group.Register("unsubscribe", c.UnsubHandle)
 }
