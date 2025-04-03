@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"encoding/json"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
@@ -13,11 +14,16 @@ type RoomController struct {
 
 func (r RoomController) CreateRoom(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
-		w.Result(dataType.WrongBody, "Room Create Failed without title")
+		w.Result(dataType.WrongBody, "Room Create Failed without config")
 		return
 	}
-	roomName := w.Request.Params[0]
-	room, err := subscribe.NewRoom(w.Conn, roomName)
+	var conf subscribe.RoomConfig
+	err := json.Unmarshal(w.Request.Params[0], &conf)
+	if err != nil {
+		w.Result(dataType.WrongBody, err.Error())
+		return
+	}
+	room, err := subscribe.NewRoom(w.Conn, &conf)
 	if err != nil {
 		w.Result(dataType.Unknown, err.Error())
 		return
@@ -26,19 +32,38 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 }
 
 func (r RoomController) GetInRoom(w *wes.WContext) {
-	if len(w.Request.Params) != 1 {
+	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
-	roomId := w.Request.Params[0]
+	var roomId string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
+	var password = ""
+	if len(w.Request.Params) > 1 {
+		var p string
+		err := json.Unmarshal(w.Request.Params[1], &p)
+		if err != nil {
+			w.Result(dataType.WrongBody, "invalided password")
+			return
+		}
+		password = p
+	}
 	room, ok := subscribe.GetRoom(roomId)
+	if password != room.Config.Password {
+		w.Result(dataType.DeniedByPermission, "invalid password")
+		return
+	}
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
 		return
 	}
-	err := room.Subscribe(w.Conn)
+	err = room.Subscribe(w.Conn)
 	if err != nil {
-		w.Result(dataType.Unknown, "subscribe failed")
+		w.Result(dataType.Unknown, "subscribe failed: "+err.Error())
 		return
 	}
 	w.Result(dataType.Success, "success")
@@ -49,13 +74,18 @@ func (r RoomController) GetOutRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
-	roomId := w.Request.Params[0]
+	var roomId string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
 	room, ok := subscribe.GetRoom(roomId)
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
 		return
 	}
-	err := room.UnSubscribe(w.Conn)
+	err = room.UnSubscribe(w.Conn)
 	if err != nil {
 		w.Result(dataType.Unknown, "subscribe failed")
 		return
@@ -68,7 +98,12 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
-	roomId := w.Request.Params[0]
+	var roomId string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
 	room, ok := subscribe.GetRoom(roomId)
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
@@ -87,7 +122,12 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
-	roomId := w.Request.Params[0]
+	var roomId string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
 	room, ok := subscribe.GetRoom(roomId)
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
@@ -97,16 +137,7 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 		w.Result(dataType.DeniedByPermission, "not in room")
 		return
 	}
-	resp := struct {
-		RoomUUID string               `json:"roomUuid"`
-		RoomName string               `json:"RoomName"`
-		RoomMate []subscribe.MateInfo `json:"RoomMate"`
-	}{
-		RoomUUID: room.UUID(),
-		RoomName: room.Title,
-		RoomMate: room.Mates(),
-	}
-	w.Result(dataType.Success, resp)
+	w.Result(dataType.Success, room.Mates())
 }
 
 func (r RoomController) ListRoom(c *gin.Context) {

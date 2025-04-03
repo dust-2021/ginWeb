@@ -53,10 +53,10 @@ func PrintTasks() {
 
 // 接收的ws报文
 type payload struct {
-	Id        string   `json:"id"`
-	Method    string   `json:"method"`
-	Params    []string `json:"params"`
-	Signature string   `json:"signature"`
+	Id        string            `json:"id"`
+	Method    string            `json:"method"`
+	Params    []json.RawMessage `json:"params"`
+	Signature string            `json:"signature"`
 }
 
 // Resp ws返回类型

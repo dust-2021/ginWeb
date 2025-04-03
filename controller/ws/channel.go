@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"encoding/json"
 	"ginWeb/middleware"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
@@ -20,15 +21,22 @@ func (c ChannelController) SubHandle(w *wes.WContext) {
 	}
 	var failedKeys = make([]string, 0)
 	for _, name := range w.Request.Params {
-		pub, ok := subscribe.GetPub(name)
+		var n string
+		err := json.Unmarshal(name, &n)
+		if err != nil {
+			failedKeys = append(failedKeys, n)
+			continue
+		}
+		pub, ok := subscribe.GetPub(n)
 		if ok {
 			_ = pub.Subscribe(w.Conn)
 		} else {
-			failedKeys = append(failedKeys, name)
+			failedKeys = append(failedKeys, n)
 		}
 	}
 	if len(failedKeys) > 0 {
 		w.Result(dataType.NotFound, strings.Join(failedKeys, ","))
+		return
 	}
 	w.Result(dataType.Success, "success")
 }
@@ -39,12 +47,24 @@ func (c ChannelController) UnsubHandle(w *wes.WContext) {
 		w.Result(dataType.WrongData, "without params")
 		return
 	}
-
+	var failedKeys = make([]string, 0)
 	for _, name := range w.Request.Params {
-		pub, ok := subscribe.GetPub(name)
+		var n string
+		err := json.Unmarshal(name, &n)
+		if err != nil {
+			failedKeys = append(failedKeys, n)
+			continue
+		}
+		pub, ok := subscribe.GetPub(n)
 		if ok {
 			_ = pub.UnSubscribe(w.Conn)
+		} else {
+			failedKeys = append(failedKeys, n)
 		}
+	}
+	if len(failedKeys) > 0 {
+		w.Result(dataType.NotFound, strings.Join(failedKeys, ","))
+		return
 	}
 	w.Result(dataType.Success, "success")
 }
@@ -56,14 +76,23 @@ func (c ChannelController) Broadcast(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalid param")
 		return
 	}
-	name := w.Request.Params[0]
-	msg := w.Request.Params[1]
+	var name string
+	var msg string
+	err := json.Unmarshal(w.Request.Params[0], &name)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalid name")
+		return
+	}
+	err = json.Unmarshal(w.Request.Params[1], &msg)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalid msg")
+	}
 	pub, ok := subscribe.GetPub(name)
 	if !ok {
 		w.Result(dataType.NotFound, "not found pub")
 		return
 	}
-	err := pub.Publish(msg, w.Conn)
+	err = pub.Publish(msg, w.Conn)
 	if err != nil {
 		w.Result(dataType.WrongBody, "broadcast failed:"+err.Error())
 		return

@@ -3,6 +3,7 @@ package route
 import (
 	"ginWeb/config"
 	"ginWeb/controller/perm"
+	"ginWeb/controller/server"
 	"ginWeb/controller/user"
 	"ginWeb/controller/ws"
 	"ginWeb/middleware"
@@ -19,6 +20,7 @@ func InitRoute(g *gin.Engine) {
 	// 开放api组
 	api := g.Group("/api")
 	controller.Login{}.RegisterRoute("/login", api)
+	server.Server{}.RegisterRoute("/server", api)
 
 	// 带token验证的api组
 	sapi := g.Group("/sapi")

@@ -22,7 +22,8 @@ async def listener(l: asyncio.Condition):
             "id": "get in room",
             "method": "room.in",
             "params": [
-                room
+                room,
+                "1"
             ]
         }
         await ws.send_str(json.dumps(data))
@@ -44,9 +45,12 @@ async def listener(l: asyncio.Condition):
 async def sender(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
         token = await login(session, "111@qq.com", "123456")
-        ws = await session.ws_connect('ws://127.0.0.1:8000/ws', headers={'Token': token})
+        ws = await session.ws_connect('http://127.0.0.1:8000/ws', headers={'Token': token})
 
-        await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': ["宝宝巴士"]}))
+        await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
+            'title': '宝宝巴士', 'maxMember': 100, 'password': '1',
+            'UserIdBlackList': [2]
+        }]}))
         resp = await ws.receive()
         print(resp.data)
         global room
@@ -54,7 +58,7 @@ async def sender(l: asyncio.Condition):
         print('room: ', room)
         async with l:
             l.notify()
-        await asyncio.sleep(120)
+        await asyncio.sleep(20)
 
 
 async def main():

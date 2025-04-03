@@ -42,11 +42,13 @@ func SetRoom(name string, room *Room) bool {
 }
 
 type roomInfo struct {
-	RoomID      string `json:"roomId"`
-	RoomTitle   string `json:"roomTitle"`
-	OwnerID     int64  `json:"ownerId"`
-	OwnerName   string `json:"ownerName"`
-	MemberCount int    `json:"memberCount"`
+	RoomID       string `json:"roomId"`
+	RoomTitle    string `json:"roomTitle"`
+	OwnerID      int64  `json:"ownerId"`
+	OwnerName    string `json:"ownerName"`
+	MemberCount  int    `json:"memberCount"`
+	MaxMember    int    `json:"memberMax"`
+	WithPassword bool   `json:"withPassword"`
 }
 
 // RoomInfo 返回所有房间信息
@@ -57,23 +59,36 @@ func RoomInfo() []roomInfo {
 	for _, room := range rooms {
 
 		item := roomInfo{
-			RoomID:      room.uuid,
-			RoomTitle:   room.Title,
-			OwnerID:     room.Owner.UserId,
-			OwnerName:   room.Owner.UserName,
-			MemberCount: len(room.subs),
+			RoomID:       room.uuid,
+			RoomTitle:    room.Config.Title,
+			OwnerID:      room.Owner.UserId,
+			OwnerName:    room.Owner.UserName,
+			MemberCount:  len(room.subs),
+			MaxMember:    room.Config.MaxMember,
+			WithPassword: room.Config.Password != "",
 		}
 		infos = append(infos, item)
 	}
 	return infos
 }
 
+// RoomConfig 房间设置
+type RoomConfig struct {
+	Title           string   `json:"title" binding:"required,max=12,min=2" msg:"invalid title"`
+	Description     string   `json:"description" binding:"max=512" msg:"invalid description"`
+	MaxMember       int      `json:"maxMember" binding:"gte=1,lte=32" msg:"invalid maxMember"`
+	Password        string   `json:"password" binding:"max=16,min=6" msg:"invalid password"`
+	IPBlackList     []string `json:"blackList"`
+	UserIdBlackList []int64  `json:"UserIdBlackList"`
+	DeviceBlackList []string `json:"deviceBlackList"`
+}
+
 type Room struct {
-	uuid  string
-	Title string
-	subs  map[*wes.Connection]struct{}
-	lock  sync.RWMutex
-	Owner *wes.Connection
+	uuid   string // id
+	subs   map[*wes.Connection]struct{}
+	lock   sync.RWMutex
+	Owner  *wes.Connection
+	Config *RoomConfig `json:"config"`
 
 	refreshCtx context.Context
 	refresh    context.CancelFunc
@@ -137,11 +152,25 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	if _, ok := r.subs[c]; ok {
 		return nil
 	}
+	if r.Config.MaxMember != 0 && len(r.subs) >= r.Config.MaxMember {
+		return errors.New("room is full")
+	}
+	for _, ip := range r.Config.IPBlackList {
+		if ip == c.RemoteAddr().String() {
+			return errors.New("black ip")
+		}
+	}
+	for _, id := range r.Config.UserIdBlackList {
+		if id == c.UserId {
+			return errors.New("black user id")
+		}
+	}
 	r.subs[c] = struct{}{}
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", c.UserId, r.Owner.UserId))
 	c.DoneHook(func() {
 		_ = r.UnSubscribe(c)
 	})
+	r.Config.MaxMember += 1
 	return nil
 }
 
@@ -185,8 +214,6 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 	r.refreshCtx = ctx
 	r.refresh = cancel
 	go r.closer()
-
-	var shouldDelete = make([]*wes.Connection, 0)
 	var res = wes.Resp{
 		Id:         "publish.room." + r.UUID(),
 		StatusCode: dataType.Success,
@@ -206,18 +233,10 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 
 		err := c.Send(data)
 		if err != nil {
-			shouldDelete = append(shouldDelete, c)
+			loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send to member %s failed", c.UserName))
 		}
 	}
-	// 延迟删除发送失败连接
-	go func() {
-		r.lock.Lock()
-		defer r.lock.Unlock()
-		for _, conn := range shouldDelete {
-			//loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("delete subscribe \"%s\" from %s", conn.RemoteAddr().String(), p.Name))
-			delete(r.subs, conn)
-		}
-	}()
+
 	return nil
 }
 
@@ -258,14 +277,14 @@ func (r *Room) Shutdown() error {
 }
 
 // NewRoom 创建room并开启，已存在则返回false
-func NewRoom(owner *wes.Connection, title string) (*Room, error) {
+func NewRoom(owner *wes.Connection, config *RoomConfig) (*Room, error) {
 	roomName := uuid.New().String()
 	r := &Room{
-		uuid:  roomName,
-		Title: title,
-		subs:  make(map[*wes.Connection]struct{}),
-		Owner: owner,
-		lock:  sync.RWMutex{},
+		uuid:   roomName,
+		subs:   make(map[*wes.Connection]struct{}),
+		Owner:  owner,
+		lock:   sync.RWMutex{},
+		Config: config,
 	}
 	ok := SetRoom(roomName, r)
 	if !ok {
