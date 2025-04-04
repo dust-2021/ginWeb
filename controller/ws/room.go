@@ -5,6 +5,7 @@ import (
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
+	"ginWeb/utils/tools"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
@@ -18,7 +19,7 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 		return
 	}
 	var conf subscribe.RoomConfig
-	err := json.Unmarshal(w.Request.Params[0], &conf)
+	err := tools.ShouldBindJson(w.Request.Params[0], &conf)
 	if err != nil {
 		w.Result(dataType.WrongBody, err.Error())
 		return
@@ -53,6 +54,10 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		password = p
 	}
 	room, ok := subscribe.GetRoom(roomId)
+	if !ok {
+		w.Result(dataType.WrongBody, "room not found")
+		return
+	}
 	if password != room.Config.Password {
 		w.Result(dataType.DeniedByPermission, "invalid password")
 		return

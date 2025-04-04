@@ -74,10 +74,10 @@ func RoomInfo() []roomInfo {
 
 // RoomConfig 房间设置
 type RoomConfig struct {
-	Title           string   `json:"title" binding:"required,max=12,min=2" msg:"invalid title"`
-	Description     string   `json:"description" binding:"max=512" msg:"invalid description"`
-	MaxMember       int      `json:"maxMember" binding:"gte=1,lte=32" msg:"invalid maxMember"`
-	Password        string   `json:"password" binding:"max=16,min=6" msg:"invalid password"`
+	Title           string   `json:"title" validate:"required,max=12,min=2" msg:"invalid title"`
+	Description     string   `json:"description" validate:"max=512" msg:"invalid description"`
+	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32" msg:"invalid maxMember"`
+	Password        string   `json:"password" validate:"max=16,min=6" msg:"invalid password"`
 	IPBlackList     []string `json:"blackList"`
 	UserIdBlackList []int64  `json:"UserIdBlackList"`
 	DeviceBlackList []string `json:"deviceBlackList"`
