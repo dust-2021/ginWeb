@@ -32,9 +32,9 @@ func (receiver Login) V1(c *gin.Context) {
 	}
 	// 查找用户
 	var u systemMode.User
-	result := database.Db.Where("phone = ?", j.Username).Or("email = ?", j.Username).First(&u)
-	pwd, err := auth.HashPassword(j.Password)
-	if result.Error != nil || err != nil || pwd != u.PasswordHash {
+	result := database.Db.Where("username = ?", j.Username).First(&u)
+	pwd := auth.HashPassword(j.Password)
+	if result.Error != nil || pwd != u.PasswordHash {
 		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{Code: dataType.WrongData,
 			Message: "username or password invalid"})
 		return

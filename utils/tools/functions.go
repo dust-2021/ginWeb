@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-playground/validator/v10"
+	"math/rand"
 	"strings"
 )
 
@@ -57,6 +58,7 @@ func ContainOne(a []string, b [][]string) bool {
 
 var jsonFormatter *validator.Validate
 
+// ShouldBindJson json解析自定义数据类型标签
 func ShouldBindJson(data []byte, target interface{}) error {
 	err := json.Unmarshal(data, target)
 	if err != nil {
@@ -77,6 +79,18 @@ func ShouldBindJson(data []byte, target interface{}) error {
 		}
 	}
 	return nil
+}
+
+const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+// GenerateRandomString 生成指定长度的随机字符串
+func GenerateRandomString(length int) string {
+	result := make([]byte, length)
+	for i := 0; i < length; i++ {
+		result[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(result)
 }
 
 func init() {

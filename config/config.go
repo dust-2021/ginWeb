@@ -28,6 +28,7 @@ type Config struct {
 		}
 		// 管理员账号信息
 		AdminUser struct {
+			Username string `yaml:"username"`
 			Phone    string `yaml:"phone"`
 			Email    string `yaml:"email"`
 			Password string `yaml:"password"`

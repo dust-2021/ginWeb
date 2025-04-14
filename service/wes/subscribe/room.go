@@ -49,6 +49,7 @@ type roomInfo struct {
 	MemberCount  int    `json:"memberCount"`
 	MaxMember    int    `json:"memberMax"`
 	WithPassword bool   `json:"withPassword"`
+	Forbidden    bool   `json:"forbidden"`
 }
 
 // RoomInfo 返回所有房间信息
@@ -66,6 +67,7 @@ func RoomInfo() []roomInfo {
 			MemberCount:  len(room.subs),
 			MaxMember:    room.Config.MaxMember,
 			WithPassword: room.Config.Password != "",
+			Forbidden:    room.forbidden,
 		}
 		infos = append(infos, item)
 	}
@@ -74,25 +76,26 @@ func RoomInfo() []roomInfo {
 
 // RoomConfig 房间设置
 type RoomConfig struct {
-	Title           string   `json:"title" validate:"required,max=12,min=2" msg:"invalid title"`
-	Description     string   `json:"description" validate:"max=512" msg:"invalid description"`
-	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32" msg:"invalid maxMember"`
-	Password        string   `json:"password" validate:"max=16,min=6" msg:"invalid password"`
+	Title           string   `json:"title" validate:"required,max=12,min=2"`
+	Description     string   `json:"description" validate:"max=512"`
+	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32"`
+	Password        string   `json:"password" validate:"max=16,min=6"`
 	IPBlackList     []string `json:"blackList"`
 	UserIdBlackList []int64  `json:"UserIdBlackList"`
 	DeviceBlackList []string `json:"deviceBlackList"`
 }
 
 type Room struct {
-	uuid   string // id
-	subs   map[*wes.Connection]struct{}
-	lock   sync.RWMutex
-	Owner  *wes.Connection
-	Config *RoomConfig `json:"config"`
+	uuid   string                       // id
+	subs   map[*wes.Connection]struct{} // 成员ws连接对象
+	lock   sync.RWMutex                 // 对象读写锁
+	Owner  *wes.Connection              // 房间持有者
+	Config *RoomConfig                  `json:"config"` //房间设置
 
-	refreshCtx context.Context
+	refreshCtx context.Context // 房间生命周期刷新上下文
 	refresh    context.CancelFunc
-	closed     bool
+	forbidden  bool // 房间是否关闭入口
+	closed     bool // 对象状态
 }
 
 func (r *Room) UUID() string {
@@ -152,6 +155,9 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	if _, ok := r.subs[c]; ok {
 		return nil
 	}
+	if r.forbidden {
+		return errors.New("room forbidden")
+	}
 	if r.Config.MaxMember != 0 && len(r.subs) >= r.Config.MaxMember {
 		return errors.New("room is full")
 	}
@@ -198,12 +204,18 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 	return nil
 }
 
+func (r *Room) Forbidden(to bool) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.forbidden = to
+}
+
 // Publish 向房间内所有成员发送消息
 func (r *Room) Publish(v string, sender *wes.Connection) error {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	if r.closed {
-		return errors.New("room is closed")
+	if r.forbidden {
+		return errors.New("room is forbidden")
 	}
 	if v == "" {
 		return errors.New("msg is empty")
@@ -262,7 +274,7 @@ func (r *Room) shutdownFree() {
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, r.Owner.UserId))
 	SetRoom(r.uuid, nil)
 	r.Owner = nil
-	r.closed = true
+	r.forbidden = true
 }
 
 // Shutdown 关闭room

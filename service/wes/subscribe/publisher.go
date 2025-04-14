@@ -106,7 +106,7 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) error {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	if p.closed {
-		return errors.New("publish closed")
+		return errors.New("publish forbidden")
 	}
 	if v == "" {
 		return errors.New("msg is empty")

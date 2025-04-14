@@ -22,14 +22,12 @@ func InitializeMode() {
 	if err != nil {
 		loguru.SimpleLog(loguru.Fatal, "SYSTEM", fmt.Sprintf("create table failed %s", err.Error()))
 	}
-	hashPwd, err := auth.HashPassword(config.Conf.Server.AdminUser.Password)
-	if err != nil {
-		loguru.SimpleLog(loguru.Warn, "SYSTEM", fmt.Sprintf("init admin user failed %s", err.Error()))
-	}
+	hashPwd := auth.HashPassword(config.Conf.Server.AdminUser.Password)
 	user := systemMode.User{
 		BaseModel: model.BaseModel{
 			Id: 1,
 		},
+		Username:     config.Conf.Server.AdminUser.Username,
 		Phone:        config.Conf.Server.AdminUser.Phone,
 		Email:        config.Conf.Server.AdminUser.Email,
 		PasswordHash: hashPwd,

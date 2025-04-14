@@ -62,10 +62,6 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		w.Result(dataType.DeniedByPermission, "invalid password")
 		return
 	}
-	if !ok {
-		w.Result(dataType.NotFound, "not found")
-		return
-	}
 	err = room.Subscribe(w.Conn)
 	if err != nil {
 		w.Result(dataType.Unknown, "subscribe failed: "+err.Error())
@@ -122,6 +118,31 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
+func (r RoomController) ForbiddenRoom(w *wes.WContext) {
+	if len(w.Request.Params) != 2 {
+		w.Result(dataType.WrongBody, "invalid params")
+		return
+	}
+	var roomId string
+	var forbidden bool
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	err2 := json.Unmarshal(w.Request.Params[1], &forbidden)
+	if err != nil || err2 != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
+	room, ok := subscribe.GetRoom(roomId)
+	if !ok {
+		w.Result(dataType.NotFound, "not found")
+	}
+	if room.Owner.UserId != w.Conn.UserId {
+		w.Result(dataType.DeniedByPermission, "you are not room owner")
+		return
+	}
+	room.Forbidden(forbidden)
+	w.Result(dataType.Success, "success")
+}
+
 func (r RoomController) RoomMate(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -162,6 +183,7 @@ func (r RoomController) RegisterWSRoute(route string, g *wes.Group) {
 	group.Register("in", r.GetInRoom)
 	group.Register("out", r.GetOutRoom)
 	group.Register("close", r.CloseRoom)
+	group.Register("forbidden", r.ForbiddenRoom)
 	group.Register("roommate", r.RoomMate)
 	group.Register("create", r.CreateRoom)
 }

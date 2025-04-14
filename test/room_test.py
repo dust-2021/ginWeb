@@ -23,7 +23,7 @@ async def listener(l: asyncio.Condition):
             "method": "room.in",
             "params": [
                 room,
-                "1"
+                "123456"
             ]
         }
         await ws.send_str(json.dumps(data))
@@ -48,7 +48,7 @@ async def sender(l: asyncio.Condition):
         ws = await session.ws_connect('http://127.0.0.1:8000/ws', headers={'Token': token})
 
         await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
-            'title': '宝宝巴士', 'maxMember': 100, 'password': '1',
+            'title': '宝宝巴士', 'maxMember': 16, 'password': '123456',
             'UserIdBlackList': [2]
         }]}))
         resp = await ws.receive()
