@@ -14,50 +14,41 @@ import (
 	"time"
 )
 
-var rooms = make(map[string]*Room)
+// Roomer 房间管理器单例
+var Roomer *RoomManager
 
-var roomsLock sync.RWMutex
-
-// GetRoom 根据room名称查找room
-func GetRoom(name string) (*Room, bool) {
-	roomsLock.RLock()
-	defer roomsLock.RUnlock()
-	r, ok := rooms[name]
-	return r, ok
+// RoomManager 房间管理类
+type RoomManager struct {
+	rooms map[string]*Room
+	lock  sync.RWMutex
 }
 
-// SetRoom 修改room，不存在则创建，如果是新建room则返回true
-func SetRoom(name string, room *Room) bool {
-	roomsLock.Lock()
-	defer roomsLock.Unlock()
+func (r *RoomManager) Get(name string) (*Room, bool) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	v, ok := r.rooms[name]
+	return v, ok
+}
+
+func (r *RoomManager) Set(name string, room *Room) bool {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	if room == nil {
-		delete(rooms, name)
+		delete(r.rooms, name)
 		return true
 	}
-	if _, ok := rooms[name]; ok {
+	if _, ok := r.rooms[name]; ok {
 		return false
 	}
-	rooms[name] = room
+	r.rooms[name] = room
 	return true
 }
 
-type roomInfo struct {
-	RoomID       string `json:"roomId"`
-	RoomTitle    string `json:"roomTitle"`
-	OwnerID      int64  `json:"ownerId"`
-	OwnerName    string `json:"ownerName"`
-	MemberCount  int    `json:"memberCount"`
-	MaxMember    int    `json:"memberMax"`
-	WithPassword bool   `json:"withPassword"`
-	Forbidden    bool   `json:"forbidden"`
-}
-
-// RoomInfo 返回所有房间信息
-func RoomInfo() []roomInfo {
-	roomsLock.RLock()
-	defer roomsLock.RUnlock()
+func (r *RoomManager) List() []roomInfo {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
 	var infos []roomInfo
-	for _, room := range rooms {
+	for _, room := range r.rooms {
 
 		item := roomInfo{
 			RoomID:       room.uuid,
@@ -72,6 +63,17 @@ func RoomInfo() []roomInfo {
 		infos = append(infos, item)
 	}
 	return infos
+}
+
+type roomInfo struct {
+	RoomID       string `json:"roomId"`
+	RoomTitle    string `json:"roomTitle"`
+	OwnerID      int64  `json:"ownerId"`
+	OwnerName    string `json:"ownerName"`
+	MemberCount  int    `json:"memberCount"`
+	MaxMember    int    `json:"memberMax"`
+	WithPassword bool   `json:"withPassword"`
+	Forbidden    bool   `json:"forbidden"`
 }
 
 // RoomConfig 房间设置
@@ -193,8 +195,9 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 	// 全部退出后关闭room
 	if len(r.subs) == 0 {
 		r.shutdownFree()
+		return nil
 	}
-	if c == r.Owner && len(r.subs) != 0 {
+	if c == r.Owner {
 		// 推举下一个房主
 		for ele, _ := range r.subs {
 			r.Owner = ele
@@ -214,9 +217,6 @@ func (r *Room) Forbidden(to bool) {
 func (r *Room) Publish(v string, sender *wes.Connection) error {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	if r.forbidden {
-		return errors.New("room is forbidden")
-	}
 	if v == "" {
 		return errors.New("msg is empty")
 	}
@@ -272,7 +272,7 @@ func (r *Room) shutdownFree() {
 	r.refresh()
 	clear(r.subs)
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, r.Owner.UserId))
-	SetRoom(r.uuid, nil)
+	Roomer.Set(r.uuid, nil)
 	r.Owner = nil
 	r.forbidden = true
 }
@@ -298,7 +298,7 @@ func NewRoom(owner *wes.Connection, config *RoomConfig) (*Room, error) {
 		lock:   sync.RWMutex{},
 		Config: config,
 	}
-	ok := SetRoom(roomName, r)
+	ok := Roomer.Set(roomName, r)
 	if !ok {
 		return nil, fmt.Errorf("room exsit")
 	}
@@ -307,4 +307,8 @@ func NewRoom(owner *wes.Connection, config *RoomConfig) (*Room, error) {
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
 	_ = r.Start("")
 	return r, nil
+}
+
+func init() {
+	Roomer = &RoomManager{}
 }

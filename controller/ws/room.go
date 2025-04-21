@@ -13,6 +13,7 @@ import (
 type RoomController struct {
 }
 
+// CreateRoom 创建房间
 func (r RoomController) CreateRoom(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongBody, "Room Create Failed without config")
@@ -32,6 +33,7 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 	w.Result(dataType.Success, room.UUID())
 }
 
+// GetInRoom 进入房间
 func (r RoomController) GetInRoom(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -53,7 +55,7 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		}
 		password = p
 	}
-	room, ok := subscribe.GetRoom(roomId)
+	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
 		w.Result(dataType.WrongBody, "room not found")
 		return
@@ -70,6 +72,7 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
+// GetOutRoom 退出房间
 func (r RoomController) GetOutRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -81,7 +84,7 @@ func (r RoomController) GetOutRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalided room id")
 		return
 	}
-	room, ok := subscribe.GetRoom(roomId)
+	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
 		return
@@ -94,6 +97,7 @@ func (r RoomController) GetOutRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
+// CloseRoom 关闭房间
 func (r RoomController) CloseRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -105,7 +109,7 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalided room id")
 		return
 	}
-	room, ok := subscribe.GetRoom(roomId)
+	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
 		return
@@ -118,6 +122,7 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
+// ForbiddenRoom 房间禁止进入
 func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 2 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -131,7 +136,7 @@ func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalided room id")
 		return
 	}
-	room, ok := subscribe.GetRoom(roomId)
+	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
 	}
@@ -143,6 +148,7 @@ func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 	w.Result(dataType.Success, "success")
 }
 
+// RoomMate 获取房间成员
 func (r RoomController) RoomMate(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -154,7 +160,7 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalided room id")
 		return
 	}
-	room, ok := subscribe.GetRoom(roomId)
+	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
 		w.Result(dataType.NotFound, "not found")
 		return
@@ -166,10 +172,11 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 	w.Result(dataType.Success, room.Mates())
 }
 
+// ListRoom 所有房间信息接口
 func (r RoomController) ListRoom(c *gin.Context) {
 	c.AbortWithStatusJSON(http.StatusOK, dataType.JsonRes{
 		Code: dataType.Success,
-		Data: subscribe.RoomInfo(),
+		Data: subscribe.Roomer.List(),
 	})
 }
 
