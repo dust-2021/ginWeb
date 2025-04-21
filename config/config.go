@@ -10,6 +10,8 @@ type Config struct {
 	Server struct {
 		NodeId       uint8  `yaml:"nodeId"`       // 分布式节点ID
 		Port         uint16 `yaml:"port"`         // 端口
+		UdpPort      uint16 `yaml:"udpPort"`      // udp端口
+		PprofPort    uint16 `yaml:"pprofPort"`    // pprof端口
 		Secret       string `yaml:"secret"`       // 加密密钥
 		Debug        bool   `yaml:"debug"`        //
 		TokenEncrypt bool   `yaml:"tokenEncrypt"` // token是加密或签名

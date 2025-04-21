@@ -5,6 +5,7 @@ import (
 	"ginWeb/config"
 	"ginWeb/model/inital"
 	"ginWeb/service/scheduler"
+	"ginWeb/service/udp"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -48,10 +49,10 @@ func main() {
 
 	if config.Conf.Server.Debug {
 		go func() {
-			log.Println(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Conf.Server.Port+1), nil))
+			log.Println(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Conf.Server.PprofPort), nil))
 		}()
 	}
-
+	_ = udp.Handler.Run()
 	g := application()
 	// 启动定时器
 	scheduler.App.Start()
