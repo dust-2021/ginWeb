@@ -65,8 +65,8 @@ func init() {
 	}
 	Db = db
 	sqlDB, _ := Db.DB()
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(50)
+	sqlDB.SetMaxIdleConns(config.Conf.Database.PoolSize)
+	sqlDB.SetMaxOpenConns(config.Conf.Database.MaxConnect)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	if err := sqlDB.Ping(); err != nil {

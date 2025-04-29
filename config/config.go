@@ -37,8 +37,10 @@ type Config struct {
 		} `yaml:"adminUser"`
 	} `yaml:"server"`
 	Database struct {
-		Initial bool   `yaml:"initial"` // 是否生成表
-		Link    string `yaml:"link"`    //
+		Initial    bool   `yaml:"initial"` // 是否生成表
+		Link       string `yaml:"link"`    //
+		PoolSize   int    `yaml:"poolSize"`
+		MaxConnect int    `yaml:"maxConnect"`
 	} `yaml:"database"`
 	Redis struct {
 		Host     string `yaml:"host"`

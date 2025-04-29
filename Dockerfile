@@ -1,8 +1,9 @@
-FROM ubuntu:latest
-#FROM mysql:5.7
-#FROM redis:latest
+FROM golang:1.23.1
 #
-#ENV MYSQL_DATABASE "gin_web"
+ENV MYSQL_DATABASE "gin_web"
+VOLUME /var/log /var/log
+
+RUN go build -o app .
 
 COPY product.yaml ./config.yaml
 COPY app .

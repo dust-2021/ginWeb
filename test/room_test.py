@@ -14,7 +14,7 @@ async def login(session: aiohttp.ClientSession, username, password) -> str:
 
 async def listener(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
-        token = await login(session,"xxxx@qq.com", "123456")
+        token = await login(session,"mole", "123456")
         ws = await session.ws_connect('ws://127.0.0.1:8000/ws', headers={'Token': token})
         async with l:
             await l.wait()
@@ -44,7 +44,7 @@ async def listener(l: asyncio.Condition):
 
 async def sender(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
-        token = await login(session, "111@qq.com", "123456")
+        token = await login(session, "9d9ddd37-b1bf-4993-b1af-38cf4133bea0", "ez2ymp")
         ws = await session.ws_connect('http://127.0.0.1:8000/ws', headers={'Token': token})
 
         await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
@@ -58,7 +58,7 @@ async def sender(l: asyncio.Condition):
         print('room: ', room)
         async with l:
             l.notify()
-        await asyncio.sleep(20)
+        await asyncio.sleep(100)
 
 
 async def main():

@@ -17,13 +17,13 @@ type Login struct {
 }
 
 type postData struct {
-	Username string `json:"username" binding:"required,min=3,max=20"`
+	Username string `json:"username" binding:"required,min=3,max=36"`
 	Password string `json:"password" binding:"required,min=6,max=20"`
 }
 
 func (receiver Login) V1(c *gin.Context) {
 	var j postData
-	err := c.BindJSON(&j)
+	err := c.ShouldBindJSON(&j)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{
 			Code: dataType.WrongBody, Message: err.Error(),

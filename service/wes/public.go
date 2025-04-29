@@ -62,6 +62,7 @@ type payload struct {
 // Resp ws返回类型
 type Resp struct {
 	Id         string      `json:"id"`
+	Method     string      `json:"method"` // 响应类型，reply是被动回复
 	StatusCode int         `json:"statusCode"`
 	Data       interface{} `json:"data"`
 }
@@ -114,6 +115,7 @@ func (w *WContext) returnData(v []byte) {
 		}
 		response := Resp{
 			Id:         w.Request.Id,
+			Method:     "reply",
 			StatusCode: w.statusCode,
 			Data:       w.response,
 		}
@@ -180,6 +182,7 @@ func (w *WContext) handle() {
 			handleLog(dataType.Timeout, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "timeout", handleTimeout)
 			r := &Resp{
 				Id:         w.Request.Id,
+				Method:     "reply",
 				StatusCode: dataType.Timeout,
 				Data:       "timeout",
 			}
@@ -294,6 +297,7 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 		case <-time.After(1 * time.Second):
 			var m = Resp{
 				Id:         "",
+				Method:     "reply",
 				StatusCode: dataType.TooManyRequests,
 				Data:       "too much heartbeat",
 			}
@@ -309,6 +313,7 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 		msg := fmt.Sprintf("wrong message: %s", string(msg))
 		res, _ := json.Marshal(Resp{
 			Id:         "",
+			Method:     "reply",
 			StatusCode: dataType.WrongBody,
 			Data:       msg,
 		})
@@ -322,6 +327,7 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 	case <-time.After(1 * time.Second):
 		var m = Resp{
 			Id:         req.Id,
+			Method:     "reply",
 			StatusCode: dataType.TooManyRequests,
 			Data:       "too much request",
 		}

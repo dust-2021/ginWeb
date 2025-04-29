@@ -124,6 +124,7 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) error {
 
 	var r = wes.Resp{
 		Id:         "publish." + p.Name,
+		Method:     fmt.Sprintf("publish.%s", p.Name),
 		StatusCode: dataType.Success,
 		Data: publisherResp{
 			SenderId:   id,

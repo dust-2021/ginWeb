@@ -15,22 +15,22 @@ import (
 )
 
 // Roomer 房间管理器单例
-var Roomer *RoomManager
+var Roomer *roomManager
 
-// RoomManager 房间管理类
-type RoomManager struct {
+// roomManager 房间管理类
+type roomManager struct {
 	rooms map[string]*Room
 	lock  sync.RWMutex
 }
 
-func (r *RoomManager) Get(name string) (*Room, bool) {
+func (r *roomManager) Get(name string) (*Room, bool) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	v, ok := r.rooms[name]
 	return v, ok
 }
 
-func (r *RoomManager) Set(name string, room *Room) bool {
+func (r *roomManager) Set(name string, room *Room) bool {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if room == nil {
@@ -44,7 +44,7 @@ func (r *RoomManager) Set(name string, room *Room) bool {
 	return true
 }
 
-func (r *RoomManager) List() []roomInfo {
+func (r *roomManager) List() []roomInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	var infos []roomInfo
@@ -78,13 +78,14 @@ type roomInfo struct {
 
 // RoomConfig 房间设置
 type RoomConfig struct {
-	Title           string   `json:"title" validate:"required,max=12,min=2"`
-	Description     string   `json:"description" validate:"max=512"`
-	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32"`
-	Password        string   `json:"password" validate:"max=16,min=6"`
-	IPBlackList     []string `json:"blackList"`
-	UserIdBlackList []int64  `json:"UserIdBlackList"`
-	DeviceBlackList []string `json:"deviceBlackList"`
+	Title           string   `json:"title" validate:"required,max=12,min=2"` // 标题
+	Description     string   `json:"description" validate:"max=512"`         // 描述
+	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32"`      // 最大成员数
+	Password        string   `json:"password" validate:"max=16,min=6"`       // 房间密码
+	IPBlackList     []string `json:"blackList"`                              // ip黑名单
+	UserIdBlackList []int64  `json:"UserIdBlackList"`                        // id黑名单
+	DeviceBlackList []string `json:"deviceBlackList"`                        // 设备黑名单
+	AutoClose       bool     `json:"autoClose"`                              // 是否自动关闭
 }
 
 type Room struct {
@@ -138,11 +139,16 @@ func (r *Room) Mates() []MateInfo {
 
 // 生命周期管理
 func (r *Room) closer() {
+	// 未设置自动管理关闭直接退出
+	if !r.Config.AutoClose {
+		return
+	}
 	for {
 		select {
-		// 刷新时间
+		// ctx被主动取消则刷新时间重新计时，存在同时读写问题
 		case <-r.refreshCtx.Done():
 			continue
+		// 计时结束，关闭房间
 		case <-time.After(time.Minute * 5):
 			_ = r.Shutdown()
 			return
@@ -175,10 +181,32 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	}
 	r.subs[c] = struct{}{}
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", c.UserId, r.Owner.UserId))
+	// 将退出房间添加打ws连接关闭钩子中
 	c.DoneHook(func() {
 		_ = r.UnSubscribe(c)
 	})
 	r.Config.MaxMember += 1
+
+	var res = wes.Resp{
+		Id:         "",
+		Method:     "publish.room.in",
+		StatusCode: dataType.Success,
+		Data: publisherResp{
+			SenderId:   c.UserId,
+			SenderName: c.UserName,
+			Timestamp:  time.Now().UnixMilli(),
+			Data:       "",
+		},
+	}
+	data, _ := json.Marshal(res)
+	for conn := range r.subs {
+		// 不向发送者发送消息
+		if c == conn {
+			continue
+		}
+		_ = conn.Send(data)
+	}
+
 	return nil
 }
 
@@ -220,14 +248,17 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 	if v == "" {
 		return errors.New("msg is empty")
 	}
-	// 刷新room时间
-	r.refresh()
-	ctx, cancel := context.WithCancel(r.refreshCtx)
-	r.refreshCtx = ctx
-	r.refresh = cancel
-	go r.closer()
+	if r.Config.AutoClose {
+		// 计时器
+		r.refresh()
+		ctx, cancel := context.WithCancel(r.refreshCtx)
+		r.refreshCtx = ctx
+		r.refresh = cancel
+		go r.closer()
+	}
 	var res = wes.Resp{
-		Id:         "publish.room." + r.UUID(),
+		Id:         "",
+		Method:     "publish.room.message",
 		StatusCode: dataType.Success,
 		Data: publisherResp{
 			SenderId:   sender.UserId,
@@ -310,5 +341,7 @@ func NewRoom(owner *wes.Connection, config *RoomConfig) (*Room, error) {
 }
 
 func init() {
-	Roomer = &RoomManager{}
+	Roomer = &roomManager{
+		rooms: make(map[string]*Room),
+	}
 }
