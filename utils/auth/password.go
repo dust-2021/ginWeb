@@ -6,10 +6,14 @@ import (
 	"ginWeb/config"
 )
 
-// HashPassword sha256签名密码
-func HashPassword(password string) string {
+// HashString sha256签名密码
+func HashString(content string, solt ...string) string {
+	var theSolt string = config.Conf.Server.Secret
+	if len(solt) != 0 {
+		theSolt = solt[0]
+	}
 	hash := sha256.New()
-	hash.Write([]byte(config.Conf.Server.Secret + password))
+	hash.Write([]byte(theSolt + content))
 	hashedPassword := hash.Sum(nil)
 	return hex.EncodeToString(hashedPassword)
 }

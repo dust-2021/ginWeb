@@ -22,7 +22,7 @@ func InitializeMode() {
 	if err != nil {
 		loguru.SimpleLog(loguru.Fatal, "SYSTEM", fmt.Sprintf("create table failed %s", err.Error()))
 	}
-	hashPwd := auth.HashPassword(config.Conf.Server.AdminUser.Password)
+	hashPwd := auth.HashString(config.Conf.Server.AdminUser.Password)
 	user := systemMode.User{
 		BaseModel: model.BaseModel{
 			Id: 1,

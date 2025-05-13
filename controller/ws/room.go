@@ -8,6 +8,7 @@ import (
 	"ginWeb/utils/tools"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strconv"
 )
 
 type RoomController struct {
@@ -174,9 +175,28 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 
 // ListRoom 所有房间信息接口
 func (r RoomController) ListRoom(c *gin.Context) {
+	page := c.Query("page")
+	size := c.Query("size")
+	var pageNum, pageSize int
+	if len(page) == 0 {
+		pageNum = 1
+	} else {
+		pageNum, _ = strconv.Atoi(page)
+	}
+	if len(size) == 0 {
+		pageSize = 10
+	} else {
+		pageSize, _ = strconv.Atoi(size)
+	}
 	c.AbortWithStatusJSON(http.StatusOK, dataType.JsonRes{
 		Code: dataType.Success,
-		Data: subscribe.Roomer.List(),
+		Data: struct {
+			Total int                  `json:"total"`
+			Rooms []subscribe.RoomInfo `json:"rooms"`
+		}{
+			Total: subscribe.Roomer.Size()/pageSize + 1,
+			Rooms: subscribe.Roomer.List(pageNum, pageSize),
+		},
 	})
 }
 

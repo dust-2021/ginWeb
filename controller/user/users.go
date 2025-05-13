@@ -39,7 +39,7 @@ func (u Users) Create(ctx *gin.Context) {
 		})
 	}
 	// TODO 按需添加邮箱或手机验证
-	hashed := auth.HashPassword(reqData.Password)
+	hashed := auth.HashString(reqData.Password)
 	newUser := systemMode.User{
 		Uuid:         uuid.New().String(),
 		Phone:        reqData.Phone,
@@ -111,7 +111,7 @@ func (u Users) Update(ctx *gin.Context) {
 	}
 
 	if reqData.Password != nil {
-		oldUser.PasswordHash = auth.HashPassword(*reqData.Password)
+		oldUser.PasswordHash = auth.HashString(*reqData.Password)
 	}
 	if reqData.Phone != nil {
 		oldUser.Phone = *reqData.Phone
@@ -151,7 +151,7 @@ func (u Users) CreatePieces(ctx *gin.Context) {
 		resp := tx.Table("user").Create(&systemMode.User{
 			Uuid:         username,
 			Username:     username,
-			PasswordHash: auth.HashPassword(password),
+			PasswordHash: auth.HashString(password),
 			Available:    true,
 		})
 		result = append(result, map[string]interface{}{

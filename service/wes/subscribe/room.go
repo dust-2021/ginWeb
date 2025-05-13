@@ -19,8 +19,13 @@ var Roomer *roomManager
 
 // roomManager 房间管理类
 type roomManager struct {
-	rooms map[string]*Room
-	lock  sync.RWMutex
+	rooms     map[string]*Room
+	roomIndex []string // 排序器
+	lock      sync.RWMutex
+}
+
+func (r *roomManager) Size() int {
+	return len(Roomer.roomIndex)
 }
 
 func (r *roomManager) Get(name string) (*Room, bool) {
@@ -30,29 +35,65 @@ func (r *roomManager) Get(name string) (*Room, bool) {
 	return v, ok
 }
 
+func (r *roomManager) removeIndex(key string) {
+	var index []string
+	for i, v := range r.roomIndex {
+		if v == key {
+			if i == len(r.roomIndex)-1 {
+				r.roomIndex = index
+			} else {
+				r.roomIndex = append(index, r.roomIndex[i+1:]...)
+			}
+			return
+		}
+		index = append(index, v)
+	}
+	r.roomIndex = index
+}
+
 func (r *roomManager) Set(name string, room *Room) bool {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if room == nil {
 		delete(r.rooms, name)
+		r.removeIndex(name)
 		return true
 	}
 	if _, ok := r.rooms[name]; ok {
 		return false
 	}
 	r.rooms[name] = room
+	r.roomIndex = append(r.roomIndex, name)
 	return true
 }
 
-func (r *roomManager) List() []roomInfo {
+func (r *roomManager) Del(name string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	delete(r.rooms, name)
+}
+
+func (r *roomManager) List(page int, size int) []RoomInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	var infos []roomInfo
-	for _, room := range r.rooms {
-
-		item := roomInfo{
+	infos := make([]RoomInfo, 0)
+	if len(r.roomIndex) == 0 {
+		return infos
+	}
+	start := (page - 1) * size
+	end := start + size
+	if end > len(r.roomIndex) {
+		end = len(r.roomIndex)
+	}
+	for _, key := range r.roomIndex[start:end] {
+		room, ok := r.rooms[key]
+		if !ok {
+			continue
+		}
+		item := RoomInfo{
 			RoomID:       room.uuid,
 			RoomTitle:    room.Config.Title,
+			Description:  room.Config.Description,
 			OwnerID:      room.Owner.UserId,
 			OwnerName:    room.Owner.UserName,
 			MemberCount:  len(room.subs),
@@ -65,9 +106,10 @@ func (r *roomManager) List() []roomInfo {
 	return infos
 }
 
-type roomInfo struct {
+type RoomInfo struct {
 	RoomID       string `json:"roomId"`
 	RoomTitle    string `json:"roomTitle"`
+	Description  string `json:"description"`
 	OwnerID      int64  `json:"ownerId"`
 	OwnerName    string `json:"ownerName"`
 	MemberCount  int    `json:"memberCount"`
@@ -79,7 +121,7 @@ type roomInfo struct {
 // RoomConfig 房间设置
 type RoomConfig struct {
 	Title           string   `json:"title" validate:"required,max=12,min=2"` // 标题
-	Description     string   `json:"description" validate:"max=512"`         // 描述
+	Description     string   `json:"description" validate:"max=128"`         // 描述
 	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32"`      // 最大成员数
 	Password        string   `json:"password" validate:"max=16,min=6"`       // 房间密码
 	IPBlackList     []string `json:"blackList"`                              // ip黑名单
@@ -303,7 +345,7 @@ func (r *Room) shutdownFree() {
 	r.refresh()
 	clear(r.subs)
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, r.Owner.UserId))
-	Roomer.Set(r.uuid, nil)
+	Roomer.Del(r.uuid)
 	r.Owner = nil
 	r.forbidden = true
 }
