@@ -325,6 +325,26 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 	return nil
 }
 
+// Nat 成员一对一约定nat打洞
+// to: 目标成员ip key: 唯一识别码
+func (r *Room) Nat(to string, key string) {
+	for c := range r.subs {
+		if c.RemoteAddr().String() == to {
+			resp := wes.Resp{
+				Id:         "",
+				Method:     "publish.room.nat",
+				StatusCode: dataType.Success,
+				Data:       key,
+			}
+			data, _ := json.Marshal(resp)
+			err := c.Send(data)
+			if err != nil {
+				loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send nat msg to member %s failed", c.UserName))
+			}
+		}
+	}
+}
+
 // Start 启动
 func (r *Room) Start(timer string) error {
 	r.lock.Lock()
@@ -340,7 +360,7 @@ func (r *Room) Start(timer string) error {
 	return nil
 }
 
-// 无锁关闭room
+// 无锁关闭room，包内防止死锁
 func (r *Room) shutdownFree() {
 	r.refresh()
 	clear(r.subs)

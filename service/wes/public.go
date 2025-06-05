@@ -223,7 +223,8 @@ type Connection struct {
 	heartChan   chan int64    // 心跳监测信道
 	closed      bool
 
-	address net.Addr
+	address    net.Addr
+	MacAddress string
 	// 登录信息
 	UserId         int64
 	UserName       string
@@ -236,7 +237,7 @@ type Connection struct {
 }
 
 // NewConnection 新建连接对象
-func NewConnection(conn *websocket.Conn, user *systemMode.User) *Connection {
+func NewConnection(conn *websocket.Conn, user *systemMode.User, macAddr ...string) *Connection {
 	// 创建生命周期管理上下文
 	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
 	perms, _ := model.GetPermissionById(user.Id)
@@ -253,6 +254,9 @@ func NewConnection(conn *websocket.Conn, user *systemMode.User) *Connection {
 		UserId:         user.Id,
 		UserName:       user.Username,
 		UserPermission: perms,
+	}
+	if len(macAddr) > 0 {
+		c.MacAddress = macAddr[0]
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	return c
@@ -485,7 +489,7 @@ func UpgradeConn(c *gin.Context) {
 		})
 		return
 	}
-	connect := NewConnection(conn, user)
+	connect := NewConnection(conn, user, c.GetHeader("Mac"))
 	// 设置连接关闭时调用管理对象的Disconnect方法
 	conn.SetCloseHandler(func(code int, text string) error {
 		connect.Disconnect()

@@ -15,6 +15,7 @@ type RoomController struct {
 }
 
 // CreateRoom 创建房间
+// params: [config: subscribe.RoomConfig]
 func (r RoomController) CreateRoom(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongBody, "Room Create Failed without config")
@@ -35,6 +36,7 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 }
 
 // GetInRoom 进入房间
+// params: [rooId: string, password?: string]
 func (r RoomController) GetInRoom(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -74,6 +76,7 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 }
 
 // GetOutRoom 退出房间
+// params: [roomId: string]
 func (r RoomController) GetOutRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -99,6 +102,7 @@ func (r RoomController) GetOutRoom(w *wes.WContext) {
 }
 
 // CloseRoom 关闭房间
+// params: [roomId: string]
 func (r RoomController) CloseRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -124,6 +128,7 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 }
 
 // ForbiddenRoom 房间禁止进入
+// params: [rooId: string, stat: bool]
 func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 	if len(w.Request.Params) != 2 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -150,6 +155,7 @@ func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 }
 
 // RoomMate 获取房间成员
+// params: [roomId: string]
 func (r RoomController) RoomMate(w *wes.WContext) {
 	if len(w.Request.Params) != 1 {
 		w.Result(dataType.WrongBody, "invalid params")
@@ -171,6 +177,41 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 		return
 	}
 	w.Result(dataType.Success, room.Mates())
+}
+
+// Nat 向目标IP发起nat请求
+// params: [rooId: string, key: string, targets: []string]
+func (r RoomController) Nat(w *wes.WContext) {
+	if len(w.Request.Params) != 3 {
+		w.Result(dataType.WrongBody, "invalid params")
+		return
+	}
+	var roomId string
+	var key string
+	var targets []string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
+	err = json.Unmarshal(w.Request.Params[1], &key)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided key")
+		return
+	}
+	err = json.Unmarshal(w.Request.Params[2], &targets)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided targets")
+		return
+	}
+	room, ok := subscribe.Roomer.Get(roomId)
+	if !ok {
+		w.Result(dataType.NotFound, "room not found")
+		return
+	}
+	for _, target := range targets {
+		room.Nat(target, key)
+	}
 }
 
 // ListRoom 所有房间信息接口
@@ -213,4 +254,5 @@ func (r RoomController) RegisterWSRoute(route string, g *wes.Group) {
 	group.Register("forbidden", r.ForbiddenRoom)
 	group.Register("roommate", r.RoomMate)
 	group.Register("create", r.CreateRoom)
+	group.Register("nat", r.Nat)
 }
