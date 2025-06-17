@@ -32,18 +32,19 @@ func (u Users) Create(ctx *gin.Context) {
 		})
 		return
 	}
-	if reqData.Phone == "" && reqData.Email == "" {
-		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code:    dataType.WrongData,
-			Message: "phone or email is required",
-		})
-	}
+	//if reqData.Phone == "" && reqData.Email == "" {
+	//	ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+	//		Code:    dataType.WrongData,
+	//		Message: "phone or email is required",
+	//	})
+	//}
 	// TODO 按需添加邮箱或手机验证
 	hashed := auth.HashString(reqData.Password)
 	newUser := systemMode.User{
 		Uuid:         uuid.New().String(),
 		Phone:        reqData.Phone,
 		Email:        reqData.Email,
+		Username:     reqData.UserName,
 		PasswordHash: hashed,
 		Available:    true,
 	}

@@ -9,7 +9,6 @@ import (
 	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
 	"github.com/google/uuid"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -158,7 +157,7 @@ func (r *Room) ExistMember(c *wes.Connection) bool {
 
 type MateInfo struct {
 	Name  string `json:"name"`
-	Id    string `json:"id"`
+	Id    int    `json:"id"`
 	Addr  string `json:"addr"`
 	Owner bool   `json:"owner"`
 }
@@ -171,7 +170,7 @@ func (r *Room) Mates() []MateInfo {
 	for c := range r.subs {
 		resp = append(resp, MateInfo{
 			Name:  c.UserName,
-			Id:    strconv.FormatInt(c.UserId, 10),
+			Id:    int(c.UserId),
 			Addr:  c.RemoteAddr().String(),
 			Owner: c == r.Owner,
 		})
@@ -230,14 +229,14 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	r.Config.MaxMember += 1
 
 	var res = wes.Resp{
-		Id:         "",
+		Id:         r.uuid,
 		Method:     "publish.room.in",
 		StatusCode: dataType.Success,
-		Data: publisherResp{
-			SenderId:   c.UserId,
-			SenderName: c.UserName,
-			Timestamp:  time.Now().UnixMilli(),
-			Data:       "",
+		Data: MateInfo{
+			Id:    int(c.UserId),
+			Name:  c.UserName,
+			Owner: false,
+			Addr:  c.RemoteAddr().String(),
 		},
 	}
 	data, _ := json.Marshal(res)

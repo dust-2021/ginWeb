@@ -179,6 +179,42 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 	w.Result(dataType.Success, room.Mates())
 }
 
+// RoomMessage 发送消息
+// params: [roomId: string, message: string]
+func (r RoomController) RoomMessage(w *wes.WContext) {
+	if len(w.Request.Params) != 2 {
+		w.Result(dataType.WrongBody, "invalid params")
+		return
+	}
+	var roomId string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
+	var message string
+	err = json.Unmarshal(w.Request.Params[1], &message)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room message")
+		return
+	}
+	room, ok := subscribe.Roomer.Get(roomId)
+	if !ok {
+		w.Result(dataType.NotFound, "not found")
+		return
+	}
+	if !room.ExistMember(w.Conn) {
+		w.Result(dataType.DeniedByPermission, "not in room")
+		return
+	}
+	err = room.Publish(message, w.Conn)
+	if err != nil {
+		w.Result(dataType.Unknown, "publish message failed: "+err.Error())
+		return
+	}
+	w.Result(dataType.Success, "success")
+}
+
 // Nat 向目标IP发起nat请求
 // params: [rooId: string, key: string, targets: []string]
 func (r RoomController) Nat(w *wes.WContext) {
@@ -252,6 +288,7 @@ func (r RoomController) RegisterWSRoute(route string, g *wes.Group) {
 	group.Register("out", r.GetOutRoom)
 	group.Register("close", r.CloseRoom)
 	group.Register("forbidden", r.ForbiddenRoom)
+	group.Register("message", r.RoomMessage)
 	group.Register("roommate", r.RoomMate)
 	group.Register("create", r.CreateRoom)
 	group.Register("nat", r.Nat)

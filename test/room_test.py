@@ -14,7 +14,7 @@ async def login(session: aiohttp.ClientSession, username, password) -> str:
 
 async def listener(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
-        token = await login(session,"mole", "123456")
+        token = await login(session,"test", "123456")
         ws = await session.ws_connect('ws://127.0.0.1:8000/ws', headers={'Token': token})
         async with l:
             await l.wait()

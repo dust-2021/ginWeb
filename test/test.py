@@ -15,15 +15,17 @@ async def login(session: aiohttp.ClientSession) -> str:
 
 
 
-async def create_user():
+async def create_user(username: str, password: str):
     session = aiohttp.ClientSession()
     token = await login(session)
 
     session.headers["Token"] = token
-    resp = await session.get('http://127.0.0.1:8000/sapi/system/user/createPieces?count=2', )
+    resp = await session.post('http://127.0.0.1:8000/sapi/system/user/create', data=json.dumps({
+        'username': username, 'password': password
+    }))
     print(await resp.text())
     await session.close()
 
 
 if __name__ == '__main__':
-    asyncio.run(create_user())
+    asyncio.run(create_user('test', '123456'))
