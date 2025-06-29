@@ -92,11 +92,7 @@ func (c ChannelController) Broadcast(w *wes.WContext) {
 		w.Result(dataType.NotFound, "not found pub")
 		return
 	}
-	err = pub.Publish(msg, w.Conn)
-	if err != nil {
-		w.Result(dataType.WrongBody, "broadcast failed:"+err.Error())
-		return
-	}
+	pub.Message(msg, w.Conn)
 	w.Result(dataType.Success, "success")
 }
 

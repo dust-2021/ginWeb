@@ -178,7 +178,7 @@ func (r *Room) Mates() []MateInfo {
 	return resp
 }
 
-// 生命周期管理
+// 生命周期管理，维持一个计时器，自动关闭设置开启时生效，publish方法被调用后刷新计时器
 func (r *Room) closer() {
 	// 未设置自动管理关闭直接退出
 	if !r.Config.AutoClose {
@@ -190,7 +190,7 @@ func (r *Room) closer() {
 		case <-r.refreshCtx.Done():
 			continue
 		// 计时结束，关闭房间
-		case <-time.After(time.Minute * 5):
+		case <-time.After(time.Minute * 30):
 			_ = r.Shutdown()
 			return
 		}
@@ -240,13 +240,9 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 		},
 	}
 	data, _ := json.Marshal(res)
-	for conn := range r.subs {
-		// 不向发送者发送消息
-		if c == conn {
-			continue
-		}
-		_ = conn.Send(data)
-	}
+	go func() {
+		_ = r.Publish(data, c)
+	}()
 
 	return nil
 }
@@ -266,27 +262,86 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 		r.shutdownFree()
 		return nil
 	}
+	var leaveRes = wes.Resp{
+		Id:         r.uuid,
+		Method:     "publish.room.out",
+		StatusCode: dataType.Success,
+		Data:       c.UserId,
+	}
+	data, _ := json.Marshal(leaveRes)
+	go func() {
+		_ = r.Publish(data, nil)
+	}()
 	if c == r.Owner {
 		// 推举下一个房主
 		for ele, _ := range r.subs {
 			r.Owner = ele
+			var res = wes.Resp{
+				Id:         r.uuid,
+				Method:     "publish.room.exchangeOwner",
+				StatusCode: dataType.Success,
+				Data: struct {
+					Old int `json:"old"`
+					New int `json:"new"`
+				}{
+					Old: int(c.UserId),
+					New: int(r.Owner.UserId),
+				},
+			}
+			data, _ := json.Marshal(res)
+			go func() {
+				_ = r.Publish(data, c)
+			}()
 			break
 		}
 	}
 	return nil
 }
 
+// Forbidden 房间禁止进入
 func (r *Room) Forbidden(to bool) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.forbidden = to
 }
 
-// Publish 向房间内所有成员发送消息
-func (r *Room) Publish(v string, sender *wes.Connection) error {
+// Notice 发送系统通知
+func (r *Room) Notice(v string) error {
+	var res = wes.Resp{
+		Id:         r.uuid,
+		Method:     "publish.room.notice",
+		StatusCode: dataType.Success,
+		Data:       v,
+	}
+	data, _ := json.Marshal(res)
+	return r.Publish(data, nil)
+}
+
+// Message 房间内发送消息
+func (r *Room) Message(msg string, sender *wes.Connection) {
+	var res = wes.Resp{
+		Id:         r.uuid,
+		Method:     "publish.room.message",
+		StatusCode: dataType.Success,
+		Data: publisherResp{
+			SenderId:   sender.UserId,
+			SenderName: sender.UserName,
+			Timestamp:  time.Now().UnixMilli(),
+			Data:       msg,
+		},
+	}
+	data, _ := json.Marshal(res)
+	go func() {
+		_ = r.Publish(data, sender)
+	}()
+
+}
+
+// Publish 向所有成员广播消息，提供sender后不向sender发送
+func (r *Room) Publish(v []byte, sender *wes.Connection) error {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	if v == "" {
+	if len(v) == 0 {
 		return errors.New("msg is empty")
 	}
 	if r.Config.AutoClose {
@@ -297,25 +352,13 @@ func (r *Room) Publish(v string, sender *wes.Connection) error {
 		r.refresh = cancel
 		go r.closer()
 	}
-	var res = wes.Resp{
-		Id:         "",
-		Method:     "publish.room.message",
-		StatusCode: dataType.Success,
-		Data: publisherResp{
-			SenderId:   sender.UserId,
-			SenderName: sender.UserName,
-			Timestamp:  time.Now().UnixMilli(),
-			Data:       v,
-		},
-	}
-	data, _ := json.Marshal(res)
 	for c := range r.subs {
 		// 不向发送者发送消息
 		if c == sender {
 			continue
 		}
 
-		err := c.Send(data)
+		err := c.Send(v)
 		if err != nil {
 			loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send to member %s failed", c.UserName))
 		}

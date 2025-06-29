@@ -9,7 +9,7 @@ type Pub interface {
 	// UnSubscribe 取消订阅
 	UnSubscribe(connection *wes.Connection) error
 	// Publish 向收听者发送消息
-	Publish(string, *wes.Connection) error
+	Publish([]byte, *wes.Connection) error
 	// Start 启动事件
 	Start(string) error
 	// Shutdown 关闭事件

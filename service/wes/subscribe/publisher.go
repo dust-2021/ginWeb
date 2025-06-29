@@ -102,26 +102,14 @@ func (p *Publisher) UnSubscribe(c *wes.Connection) error {
 	return nil
 }
 
-func (p *Publisher) Publish(v string, sender *wes.Connection) error {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	if p.closed {
-		return errors.New("publish forbidden")
-	}
-	if v == "" {
-		return errors.New("msg is empty")
-	}
-
-	if sub, ok := p.subscribers[sender]; ok && sub.Muted {
-		return errors.New("you have been muted")
-	}
+// Message 发送包装后的消息响应
+func (p *Publisher) Message(v string, sender *wes.Connection) {
 	var id int64
 	var name string
 	if sender != nil {
 		id = sender.UserId
 		name = sender.UserName
 	}
-
 	var r = wes.Resp{
 		Id:         "publish." + p.Name,
 		Method:     fmt.Sprintf("publish.%s", p.Name),
@@ -134,13 +122,31 @@ func (p *Publisher) Publish(v string, sender *wes.Connection) error {
 		},
 	}
 	data, _ := json.Marshal(r)
+	go func() {
+		_ = p.Publish(data, sender)
+	}()
+}
+
+func (p *Publisher) Publish(v []byte, sender *wes.Connection) error {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	if p.closed {
+		return errors.New("publish forbidden")
+	}
+	if len(v) == 0 {
+		return errors.New("msg is empty")
+	}
+
+	if sub, ok := p.subscribers[sender]; ok && sub.Muted {
+		return errors.New("you have been muted")
+	}
 	for c := range p.subscribers {
 		// 不向发送者发送消息
 		if c == sender {
 			continue
 		}
 
-		_ = c.Send(data)
+		_ = c.Send(v)
 
 	}
 	return nil
@@ -184,11 +190,8 @@ func (p *Publisher) periodDo(period time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
-			err := p.Publish(p.f(), nil)
-			if err != nil {
-				loguru.SimpleLog(loguru.Error, "publish fail", err.Error())
-				return
-			}
+			p.Message(p.f(), nil)
+
 		case <-p.ctx.Done():
 			return
 		}
@@ -197,11 +200,7 @@ func (p *Publisher) periodDo(period time.Duration) {
 
 func (p *Publisher) cronDo(cron string) error {
 	_, err := scheduler.App.AddFunc(cron, func() {
-		err := p.Publish(p.f(), nil)
-		if err != nil {
-			loguru.SimpleLog(loguru.Error, "publish fail", err.Error())
-			return
-		}
+		p.Message(p.f(), nil)
 	})
 	return err
 }

@@ -48,6 +48,11 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalided room id")
 		return
 	}
+	room, ok := subscribe.Roomer.Get(roomId)
+	if !ok {
+		w.Result(dataType.WrongBody, "room not found")
+		return
+	}
 	var password = ""
 	if len(w.Request.Params) > 1 {
 		var p string
@@ -58,11 +63,7 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		}
 		password = p
 	}
-	room, ok := subscribe.Roomer.Get(roomId)
-	if !ok {
-		w.Result(dataType.WrongBody, "room not found")
-		return
-	}
+
 	if password != room.Config.Password {
 		w.Result(dataType.DeniedByPermission, "invalid password")
 		return
@@ -207,11 +208,7 @@ func (r RoomController) RoomMessage(w *wes.WContext) {
 		w.Result(dataType.DeniedByPermission, "not in room")
 		return
 	}
-	err = room.Publish(message, w.Conn)
-	if err != nil {
-		w.Result(dataType.Unknown, "publish message failed: "+err.Error())
-		return
-	}
+	room.Message(message, w.Conn)
 	w.Result(dataType.Success, "success")
 }
 

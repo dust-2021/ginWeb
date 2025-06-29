@@ -44,7 +44,7 @@ async def listener(l: asyncio.Condition):
 
 async def sender(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
-        token = await login(session, "9d9ddd37-b1bf-4993-b1af-38cf4133bea0", "ez2ymp")
+        token = await login(session, "ddd", "ez2ymp")
         ws = await session.ws_connect('http://127.0.0.1:8000/ws', headers={'Token': token})
 
         await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
@@ -58,7 +58,11 @@ async def sender(l: asyncio.Condition):
         print('room: ', room)
         async with l:
             l.notify()
-        await asyncio.sleep(100)
+        for i in range(100):
+            await ws.send_str(json.dumps({
+                'id': '', 'method': 'room.message', 'params': [room, 'hello' + str(i)]
+            }))
+            await asyncio.sleep(2)
 
 
 async def main():
