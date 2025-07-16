@@ -90,9 +90,9 @@ type WContext struct {
 
 	statusCode int
 	response   interface{}
-	isAbort    bool      // 是否已退出
-	withResult bool      // 是否已设置结果
-	once       sync.Once // 返回结果的单次锁
+	isAbort    bool       // 是否已退出
+	withResult bool       // 是否已设置结果
+	returnOnce *sync.Once // 返回结果的单次锁
 }
 
 // Result 设置返回结果，终止后续处理逻辑
@@ -105,7 +105,7 @@ func (w *WContext) Result(code int, data interface{}) {
 
 // 返回数据，只会执行一次
 func (w *WContext) returnData(v []byte) {
-	w.once.Do(func() {
+	w.returnOnce.Do(func() {
 		if v != nil {
 			_ = w.Conn.Send(v)
 			return
@@ -199,7 +199,7 @@ func (w *WContext) handle() {
 
 // NewWContext 创建ws上下文
 func NewWContext(conn *Connection, data *payload) *WContext {
-	return &WContext{Conn: conn, Request: data, attribute: make(map[string]interface{})}
+	return &WContext{Conn: conn, Request: data, attribute: make(map[string]interface{}), returnOnce: &sync.Once{}}
 }
 
 var upper = &websocket.Upgrader{
@@ -216,12 +216,13 @@ type Connection struct {
 	Uuid string
 	conn *websocket.Conn
 	// 生命周期上下文
-	lifetimeCtx *context.Context
-	cancel      context.CancelFunc
-	lock        *sync.RWMutex // 对象读写锁
-	msgChan     chan *payload // 信息信道
-	heartChan   chan int64    // 心跳监测信道
-	closed      bool
+	lifetimeCtx    *context.Context
+	cancel         context.CancelFunc
+	lock           *sync.RWMutex // 对象读写锁
+	msgChan        chan *payload // 信息信道
+	heartChan      chan int64    // 心跳监测信道
+	closed         bool
+	disconnectOnce *sync.Once // 断开连接单次执行锁
 
 	address    net.Addr
 	MacAddress string
@@ -232,8 +233,7 @@ type Connection struct {
 	// 连接创建时间
 	connectTime time.Time
 	// 断开连接时的任务
-	doneHooks   []func()
-	logoutHooks []func()
+	doneHooks map[string]func()
 }
 
 // NewConnection 新建连接对象
@@ -254,6 +254,8 @@ func NewConnection(conn *websocket.Conn, user *systemMode.User, macAddr ...strin
 		UserId:         user.Id,
 		UserName:       user.Username,
 		UserPermission: perms,
+		disconnectOnce: &sync.Once{},
+		doneHooks:      make(map[string]func()),
 	}
 	if len(macAddr) > 0 {
 		c.MacAddress = macAddr[0]
@@ -430,34 +432,42 @@ func (c *Connection) heartbeat() {
 }
 
 // DoneHook 添加断开连接钩子函数
-func (c *Connection) DoneHook(f func()) {
+func (c *Connection) DoneHook(key string, f func()) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.doneHooks = append(c.doneHooks, f)
+	c.doneHooks[key] = f
+}
+
+func (c *Connection) DeleteDoneHook(key string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	delete(c.doneHooks, key)
 }
 
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
-	for _, hook := range c.doneHooks {
-		hook()
-	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.closed {
-		return
-	}
-
-	if c.conn != nil {
-		err := c.conn.Close()
-		if err != nil {
-			loguru.SimpleLog(loguru.Trace, "WS", "connect close err: "+err.Error())
+	c.disconnectOnce.Do(func() {
+		for _, hook := range c.doneHooks {
+			hook()
 		}
-	}
-	// 主动取消生命周期上下文
-	c.cancel()
-	c.closed = true
-	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("disconnect from %s, lifetime %s",
-		c.conn.RemoteAddr().String(), time.Now().Sub(c.connectTime).String()))
+		c.lock.Lock()
+		defer c.lock.Unlock()
+		if c.closed {
+			return
+		}
+
+		if c.conn != nil {
+			err := c.conn.Close()
+			if err != nil {
+				loguru.SimpleLog(loguru.Trace, "WS", "connect close err: "+err.Error())
+			}
+		}
+		// 主动取消生命周期上下文
+		c.cancel()
+		c.closed = true
+		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("disconnect from %s, lifetime %s",
+			c.conn.RemoteAddr().String(), time.Now().Sub(c.connectTime).String()))
+	})
 }
 
 // UpgradeConn ws路由升级函数

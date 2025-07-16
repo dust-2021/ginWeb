@@ -50,6 +50,7 @@ func (r *roomManager) removeIndex(key string) {
 	r.roomIndex = index
 }
 
+// Set 添加房间，已存在同名房间则返回false，当房间为空指针时则删除房间
 func (r *roomManager) Set(name string, room *Room) bool {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -223,8 +224,12 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	r.subs[c] = struct{}{}
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", c.UserId, r.Owner.UserId))
 	// 将退出房间添加打ws连接关闭钩子中
-	c.DoneHook(func() {
-		_ = r.UnSubscribe(c)
+	c.DoneHook("publish.room."+r.uuid, func() {
+		r.lock.Lock()
+		defer r.lock.Unlock()
+		r.deleteMember(c)
+		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
+			c.UserId, r.Owner.UserId))
 	})
 	r.Config.MaxMember += 1
 
@@ -247,20 +252,12 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	return nil
 }
 
-// UnSubscribe 退出房间
-func (r *Room) UnSubscribe(c *wes.Connection) error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
-	if _, ok := r.subs[c]; !ok {
-		return nil
-	}
-	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %d", c.UserId, r.Owner.UserId))
+// 删除成员并检测房间成员数量和房主转移
+func (r *Room) deleteMember(c *wes.Connection) {
 	delete(r.subs, c)
 	// 全部退出后关闭room
 	if len(r.subs) == 0 {
 		r.shutdownFree()
-		return nil
 	}
 	var leaveRes = wes.Resp{
 		Id:         r.uuid,
@@ -295,6 +292,19 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 			break
 		}
 	}
+}
+
+// UnSubscribe 退出房间
+func (r *Room) UnSubscribe(c *wes.Connection) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	if _, ok := r.subs[c]; !ok {
+		return nil
+	}
+	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %d", c.UserId, r.Owner.UserId))
+	r.deleteMember(c)
+	c.DeleteDoneHook("publish.room." + r.uuid)
 	return nil
 }
 

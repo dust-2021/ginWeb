@@ -87,8 +87,12 @@ func (p *Publisher) Subscribe(c *wes.Connection) error {
 		Muted: true,
 	}
 	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s subscribe channel %s", c.RemoteAddr().String(), p.Name))
-	c.DoneHook(func() {
-		_ = p.UnSubscribe(c)
+	c.DoneHook("publish."+p.Name, func() {
+		p.lock.Lock()
+		defer p.lock.Unlock()
+		delete(p.subscribers, c)
+		loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s force to unsubscribe channel %s by done hook",
+			c.RemoteAddr().String(), p.Name))
 	})
 	return nil
 }
@@ -99,6 +103,7 @@ func (p *Publisher) UnSubscribe(c *wes.Connection) error {
 
 	delete(p.subscribers, c)
 	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s unsubscribe channel %s", c.RemoteAddr().String(), p.Name))
+	c.DeleteDoneHook("publish." + p.Name)
 	return nil
 }
 

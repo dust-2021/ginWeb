@@ -57,7 +57,7 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 	if len(w.Request.Params) > 1 {
 		var p string
 		err := json.Unmarshal(w.Request.Params[1], &p)
-		if err != nil {
+		if err != nil || len(p) > 16 {
 			w.Result(dataType.WrongBody, "invalided password")
 			return
 		}
