@@ -64,7 +64,7 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		password = p
 	}
 
-	if password != room.Config.Password {
+	if password != *room.Config.Password {
 		w.Result(dataType.DeniedByPermission, "invalid password")
 		return
 	}
@@ -91,7 +91,7 @@ func (r RoomController) GetOutRoom(w *wes.WContext) {
 	}
 	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
-		w.Result(dataType.NotFound, "not found")
+		w.Result(dataType.NotFound, "room not found")
 		return
 	}
 	err = room.UnSubscribe(w.Conn)
@@ -117,7 +117,7 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 	}
 	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
-		w.Result(dataType.NotFound, "not found")
+		w.Result(dataType.NotFound, "room not found")
 		return
 	}
 	if room.Owner.UserId != w.Conn.UserId {
@@ -145,7 +145,7 @@ func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 	}
 	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
-		w.Result(dataType.NotFound, "not found")
+		w.Result(dataType.NotFound, "room not found")
 	}
 	if room.Owner.UserId != w.Conn.UserId {
 		w.Result(dataType.DeniedByPermission, "you are not room owner")
@@ -170,7 +170,7 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 	}
 	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
-		w.Result(dataType.NotFound, "not found")
+		w.Result(dataType.NotFound, "room not found")
 		return
 	}
 	if !room.ExistMember(w.Conn) {
@@ -201,7 +201,7 @@ func (r RoomController) RoomMessage(w *wes.WContext) {
 	}
 	room, ok := subscribe.Roomer.Get(roomId)
 	if !ok {
-		w.Result(dataType.NotFound, "not found")
+		w.Result(dataType.NotFound, "room not found")
 		return
 	}
 	if !room.ExistMember(w.Conn) {

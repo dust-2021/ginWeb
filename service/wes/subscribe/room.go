@@ -98,7 +98,7 @@ func (r *roomManager) List(page int, size int) []RoomInfo {
 			OwnerName:    room.Owner.UserName,
 			MemberCount:  len(room.subs),
 			MaxMember:    room.Config.MaxMember,
-			WithPassword: room.Config.Password != "",
+			WithPassword: *room.Config.Password != "",
 			Forbidden:    room.forbidden,
 		}
 		infos = append(infos, item)
@@ -120,14 +120,14 @@ type RoomInfo struct {
 
 // RoomConfig 房间设置
 type RoomConfig struct {
-	Title           string   `json:"title" validate:"required,max=12,min=2"` // 标题
-	Description     string   `json:"description" validate:"max=128"`         // 描述
-	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32"`      // 最大成员数
-	Password        string   `json:"password" validate:"max=16,min=6"`       // 房间密码
-	IPBlackList     []string `json:"blackList"`                              // ip黑名单
-	UserIdBlackList []int64  `json:"UserIdBlackList"`                        // id黑名单
-	DeviceBlackList []string `json:"deviceBlackList"`                        // 设备黑名单
-	AutoClose       bool     `json:"autoClose"`                              // 是否自动关闭
+	Title           string   `json:"title" validate:"required,max=12,min=2"`               // 标题
+	Description     string   `json:"description" validate:"max=128"`                       // 描述
+	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32"`                    // 最大成员数
+	Password        *string  `json:"password,omitempty" validate:"omitempty,max=16,min=6"` // 房间密码
+	IPBlackList     []string `json:"blackList"`                                            // ip黑名单
+	UserIdBlackList []int64  `json:"UserIdBlackList"`                                      // id黑名单
+	DeviceBlackList []string `json:"deviceBlackList"`                                      // 设备黑名单
+	AutoClose       bool     `json:"autoClose"`                                            // 是否自动关闭
 }
 
 type Room struct {
@@ -227,9 +227,10 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 	c.DoneHook("publish.room."+r.uuid, func() {
 		r.lock.Lock()
 		defer r.lock.Unlock()
-		r.deleteMember(c)
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
 			c.UserId, r.Owner.UserId))
+		// 最后执行删除，防止房间关闭导致空指针访问
+		r.deleteMember(c)
 	})
 	r.Config.MaxMember += 1
 
@@ -313,6 +314,16 @@ func (r *Room) Forbidden(to bool) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.forbidden = to
+	var res = wes.Resp{
+		Id:         r.uuid,
+		Method:     "publish.room.forbidden",
+		StatusCode: dataType.Success,
+		Data:       to,
+	}
+	data, _ := json.Marshal(res)
+	go func() {
+		_ = r.Publish(data, r.Owner)
+	}()
 }
 
 // Notice 发送系统通知

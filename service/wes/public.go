@@ -438,6 +438,7 @@ func (c *Connection) DoneHook(key string, f func()) {
 	c.doneHooks[key] = f
 }
 
+// DeleteDoneHook 删除断连钩子
 func (c *Connection) DeleteDoneHook(key string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
