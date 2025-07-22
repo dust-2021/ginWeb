@@ -172,7 +172,7 @@ func (r *Room) Mates() []MateInfo {
 		resp = append(resp, MateInfo{
 			Name:  c.UserName,
 			Id:    int(c.UserId),
-			Addr:  c.RemoteAddr().String(),
+			Addr:  c.IP,
 			Owner: c == r.Owner,
 		})
 	}
@@ -212,7 +212,7 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 		return errors.New("room is full")
 	}
 	for _, ip := range r.Config.IPBlackList {
-		if ip == c.RemoteAddr().String() {
+		if ip == c.IP {
 			return errors.New("black ip")
 		}
 	}
@@ -242,7 +242,7 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 			Id:    int(c.UserId),
 			Name:  c.UserName,
 			Owner: false,
-			Addr:  c.RemoteAddr().String(),
+			Addr:  c.IP,
 		},
 	}
 	data, _ := json.Marshal(res)
@@ -392,7 +392,7 @@ func (r *Room) Publish(v []byte, sender *wes.Connection) error {
 // to: 目标成员ip key: 唯一识别码
 func (r *Room) Nat(to string, key string) {
 	for c := range r.subs {
-		if c.RemoteAddr().String() == to {
+		if c.IP == to {
 			resp := wes.Resp{
 				Id:         "",
 				Method:     "publish.room.nat",

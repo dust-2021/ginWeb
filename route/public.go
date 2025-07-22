@@ -42,15 +42,14 @@ func InitWs(g *gin.Engine) {
 	// websocket
 	g.Handle("GET", "/ws",
 		middleware.NewIpLimiter(10, 0, 0, "ws").HttpHandle,
-		middleware.NewLoginStatus().HttpHandle,
 		wes.UpgradeConn)
 	// 用于ws提供的某些http接口
 	wsApi := g.Group("/ws")
 	wsApi.Use(middleware.NewLoginStatus().HttpHandle)
 
 	baseGroup := wes.NewGroup("base")
-	baseGroup.Register("hello", ws.Hello)
 	baseGroup.Register("time", ws.ServerTime)
+	baseGroup.Register("auth", ws.Auth)
 
 	channel := ws.ChannelController{}
 	channel.RegisterWSRoute("channel", wes.BasicGroup)

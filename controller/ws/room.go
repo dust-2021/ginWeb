@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+	"ginWeb/middleware"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
@@ -281,6 +282,7 @@ func (r RoomController) RegisterRoute(route string, g *gin.RouterGroup) {
 
 func (r RoomController) RegisterWSRoute(route string, g *wes.Group) {
 	group := g.Group(route)
+	group.Use(middleware.NewLoginStatus().WsHandle)
 	group.Register("in", r.GetInRoom)
 	group.Register("out", r.GetOutRoom)
 	group.Register("close", r.CloseRoom)

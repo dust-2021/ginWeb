@@ -15,7 +15,11 @@ async def login(session: aiohttp.ClientSession, username, password) -> str:
 async def listener(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
         token = await login(session,"test", "123456")
-        ws = await session.ws_connect('ws://127.0.0.1:8000/ws', headers={'Token': token})
+        ws = await session.ws_connect('ws://127.0.0.1:8000/ws')
+        await ws.send_str(json.dumps({
+            'id': '', 'method': 'base.auth', 'params': [token]
+        }))
+        print(await ws.receive())
         async with l:
             await l.wait()
         data = {
@@ -45,8 +49,11 @@ async def listener(l: asyncio.Condition):
 async def sender(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
         token = await login(session, "ddd", "ez2ymp")
-        ws = await session.ws_connect('http://127.0.0.1:8000/ws', headers={'Token': token})
-
+        ws = await session.ws_connect('http://127.0.0.1:8000/ws')
+        await ws.send_str(json.dumps({
+            'id': '', 'method': 'base.auth', 'params': [token]
+        }))
+        print(await ws.receive())
         await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
             'title': '宝宝巴士', 'maxMember': 16, 'password': '123456',
             'UserIdBlackList': [2]

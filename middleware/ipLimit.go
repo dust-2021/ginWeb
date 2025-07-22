@@ -79,7 +79,7 @@ func (i *ipLimiter) HttpHandle(c *gin.Context) {
 }
 
 func (i *ipLimiter) WsHandle(c *wes.WContext) {
-	err, ok := i.handle(c.Conn.RemoteAddr().String())
+	err, ok := i.handle(c.Conn.IP)
 	if err != nil {
 		c.Result(dataType.Unknown, "denied")
 		return

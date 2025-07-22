@@ -7,6 +7,7 @@ import (
 	"ginWeb/utils/auth"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"time"
 )
 
 type loginStatus struct {
@@ -40,8 +41,9 @@ func (l *loginStatus) HttpHandle(c *gin.Context) {
 }
 
 func (l *loginStatus) WsHandle(w *wes.WContext) {
-	// ws连接已经是登录状态
-	return
+	if w.Conn.UserId == 0 || w.Conn.AuthExpireTime.Before(time.Now()) {
+		w.Result(dataType.NoToken, "without auth")
+	}
 }
 
 // NewLoginStatus token验证中间件，验证token是否正确、是否过期、是否已注销，并将token指针放入请求上下文中

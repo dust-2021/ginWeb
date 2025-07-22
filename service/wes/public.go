@@ -3,18 +3,14 @@ package wes
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"ginWeb/config"
-	"ginWeb/model"
-	"ginWeb/model/systemMode"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/auth"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -192,7 +188,7 @@ func (w *WContext) handle() {
 
 	} else {
 		w.Result(dataType.NotFound, "not found")
-		handleLog(1, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "notfound", 0)
+		handleLog(1, w.Conn.conn.RemoteAddr().String(), w.Request.Method, "not found", 0)
 		w.returnData(nil)
 	}
 }
@@ -201,6 +197,8 @@ func (w *WContext) handle() {
 func NewWContext(conn *Connection, data *payload) *WContext {
 	return &WContext{Conn: conn, Request: data, attribute: make(map[string]interface{}), returnOnce: &sync.Once{}}
 }
+
+// ===================== 连接对象 ==================
 
 var upper = &websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -221,15 +219,15 @@ type Connection struct {
 	lock           *sync.RWMutex // 对象读写锁
 	msgChan        chan *payload // 信息信道
 	heartChan      chan int64    // 心跳监测信道
-	closed         bool
-	disconnectOnce *sync.Once // 断开连接单次执行锁
+	disconnectOnce *sync.Once    // 断开连接单次执行锁
 
-	address    net.Addr
+	IP         string
 	MacAddress string
 	// 登录信息
 	UserId         int64
 	UserName       string
 	UserPermission []string
+	AuthExpireTime time.Time
 	// 连接创建时间
 	connectTime time.Time
 	// 断开连接时的任务
@@ -237,10 +235,9 @@ type Connection struct {
 }
 
 // NewConnection 新建连接对象
-func NewConnection(conn *websocket.Conn, user *systemMode.User, macAddr ...string) *Connection {
+func NewConnection(conn *websocket.Conn) *Connection {
 	// 创建生命周期管理上下文
 	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
-	perms, _ := model.GetPermissionById(user.Id)
 	c := &Connection{
 		conn:           conn,
 		Uuid:           uuid.New().String(),
@@ -250,15 +247,10 @@ func NewConnection(conn *websocket.Conn, user *systemMode.User, macAddr ...strin
 		heartChan:      make(chan int64, config.Conf.Server.Websocket.WsMaxWaiting),
 		lock:           &sync.RWMutex{},
 		connectTime:    time.Now(),
-		address:        conn.RemoteAddr(),
-		UserId:         user.Id,
-		UserName:       user.Username,
-		UserPermission: perms,
+		IP:             conn.RemoteAddr().String(),
+		UserPermission: make([]string, 0),
 		disconnectOnce: &sync.Once{},
 		doneHooks:      make(map[string]func()),
-	}
-	if len(macAddr) > 0 {
-		c.MacAddress = macAddr[0]
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	return c
@@ -273,24 +265,11 @@ func (c *Connection) Done() <-chan struct{} {
 func (c *Connection) Send(data []byte) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if c.closed {
-		return errors.New("connection is closed")
-	}
 	err := c.conn.WriteMessage(websocket.TextMessage, data)
 	if err != nil {
 		return err
 	}
 	return nil
-}
-
-func (c *Connection) RemoteAddr() net.Addr {
-	return c.address
-}
-
-func (c *Connection) IsClose() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.closed
 }
 
 // 将消息压入通道，压入失败则返回请求错误
@@ -346,9 +325,6 @@ func (c *Connection) checkInMessage(isHeartbeat bool, msg []byte) {
 // 开始接收数据
 func (c *Connection) listen() {
 	for {
-		if c.IsClose() {
-			break
-		}
 		// 读取失败，被动关闭连接
 		type_, message, err := c.conn.ReadMessage()
 		if err != nil {
@@ -363,7 +339,7 @@ func (c *Connection) listen() {
 			}
 			go c.checkInMessage(false, message)
 		case websocket.BinaryMessage:
-			loguru.SimpleLog(loguru.Debug, "WS", "ignore binary message from: "+c.address.String())
+			loguru.SimpleLog(loguru.Debug, "WS", "ignore binary message from: "+c.IP)
 			continue
 		case websocket.CloseMessage:
 			c.Disconnect()
@@ -373,7 +349,7 @@ func (c *Connection) listen() {
 			continue
 		}
 	}
-	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close listen from %s", c.conn.RemoteAddr().String()))
+	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close listen from %s", c.IP))
 }
 
 // 开始处理请求
@@ -438,6 +414,24 @@ func (c *Connection) DoneHook(key string, f func()) {
 	c.doneHooks[key] = f
 }
 
+// Auth 登录认证，可选传入mac地址
+func (c *Connection) Auth(s string, mac ...string) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	token, err := auth.CheckToken(s)
+	if err != nil {
+		return err
+	}
+	c.UserId = token.UserId
+	c.UserName = token.Username
+	c.UserPermission = token.Permission
+	c.AuthExpireTime = token.Expire
+	if len(mac) == 1 {
+		c.MacAddress = mac[0]
+	}
+	return nil
+}
+
 // DeleteDoneHook 删除断连钩子
 func (c *Connection) DeleteDoneHook(key string) {
 	c.lock.Lock()
@@ -453,9 +447,6 @@ func (c *Connection) Disconnect() {
 		}
 		c.lock.Lock()
 		defer c.lock.Unlock()
-		if c.closed {
-			return
-		}
 
 		if c.conn != nil {
 			err := c.conn.Close()
@@ -465,7 +456,6 @@ func (c *Connection) Disconnect() {
 		}
 		// 主动取消生命周期上下文
 		c.cancel()
-		c.closed = true
 		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("disconnect from %s, lifetime %s",
 			c.conn.RemoteAddr().String(), time.Now().Sub(c.connectTime).String()))
 	})
@@ -485,22 +475,7 @@ func UpgradeConn(c *gin.Context) {
 		loguru.SimpleLog(loguru.Trace, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
 		return conn.WriteMessage(websocket.TextMessage, []byte("pong"))
 	})
-	tokenData, ok := c.Get("token")
-	if !ok {
-		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: dataType.NoToken, Message: "token not found",
-		})
-		return
-	}
-	token := tokenData.(*auth.Token)
-	user, err := systemMode.GetUserByID(token.UserId)
-	if err != nil {
-		c.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code: dataType.WrongToken, Message: err.Error(),
-		})
-		return
-	}
-	connect := NewConnection(conn, user, c.GetHeader("Mac"))
+	connect := NewConnection(conn)
 	// 设置连接关闭时调用管理对象的Disconnect方法
 	conn.SetCloseHandler(func(code int, text string) error {
 		connect.Disconnect()
@@ -561,10 +536,7 @@ func (g *Group) Register(route string, f ...handleFunc) {
 	RegisterHandler(key, append(g.middles, f...)...)
 }
 
-// NewGroup 新建组
+// NewGroup 在根组上新建组
 func NewGroup(name string, f ...handleFunc) *Group {
-	return &Group{
-		node:    name,
-		middles: append([]handleFunc{}, f...),
-	}
+	return BasicGroup.Group(name, f...)
 }
