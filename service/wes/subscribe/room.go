@@ -24,6 +24,8 @@ type roomManager struct {
 }
 
 func (r *roomManager) Size() int {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
 	return len(Roomer.roomIndex)
 }
 
@@ -71,6 +73,7 @@ func (r *roomManager) Del(name string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.rooms, name)
+	r.removeIndex(name)
 }
 
 func (r *roomManager) List(page int, size int) []RoomInfo {
@@ -82,6 +85,11 @@ func (r *roomManager) List(page int, size int) []RoomInfo {
 	}
 	start := (page - 1) * size
 	end := start + size
+	// 起点超限返回空
+	if start >= len(r.roomIndex) {
+		return infos
+	}
+	// 终点超限截断
 	if end > len(r.roomIndex) {
 		end = len(r.roomIndex)
 	}
@@ -232,7 +240,6 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 		// 最后执行删除，防止房间关闭导致空指针访问
 		r.deleteMember(c)
 	})
-	r.Config.MaxMember += 1
 
 	var res = wes.Resp{
 		Id:         r.uuid,

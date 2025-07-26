@@ -250,26 +250,31 @@ func (r RoomController) Nat(w *wes.WContext) {
 
 // ListRoom 所有房间信息接口
 func (r RoomController) ListRoom(c *gin.Context) {
-	page := c.Query("page")
-	size := c.Query("size")
-	var pageNum, pageSize int
-	if len(page) == 0 {
-		pageNum = 1
-	} else {
-		pageNum, _ = strconv.Atoi(page)
+	type respInfo struct {
+		Total int                  `json:"total"`
+		Rooms []subscribe.RoomInfo `json:"rooms"`
 	}
-	if len(size) == 0 {
-		pageSize = 10
-	} else {
-		pageSize, _ = strconv.Atoi(size)
+
+	pageNum, err := strconv.Atoi(c.Query("page"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonRes{
+			Code: dataType.WrongBody, Data: "invalided page",
+		})
+		return
 	}
+
+	pageSize, err := strconv.Atoi(c.Query("size"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonRes{
+			Code: dataType.WrongBody, Data: "invalided page",
+		})
+		return
+	}
+
 	c.AbortWithStatusJSON(http.StatusOK, dataType.JsonRes{
 		Code: dataType.Success,
-		Data: struct {
-			Total int                  `json:"total"`
-			Rooms []subscribe.RoomInfo `json:"rooms"`
-		}{
-			Total: subscribe.Roomer.Size()/pageSize + 1,
+		Data: respInfo{
+			Total: subscribe.Roomer.Size(),
 			Rooms: subscribe.Roomer.List(pageNum, pageSize),
 		},
 	})
