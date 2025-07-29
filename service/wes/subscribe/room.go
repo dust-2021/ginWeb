@@ -148,7 +148,9 @@ type Room struct {
 	refreshCtx context.Context // 房间生命周期刷新上下文
 	refresh    context.CancelFunc
 	forbidden  bool // 房间是否关闭入口
-	closed     bool // 对象状态
+
+	lifetimeCtx context.Context
+	lifetimeEnd context.CancelFunc
 }
 
 func (r *Room) UUID() string {
@@ -195,12 +197,19 @@ func (r *Room) closer() {
 	}
 	for {
 		select {
-		// ctx被主动取消则刷新时间重新计时，存在同时读写问题
+		// ctx被主动取消则刷新时间重新计时
 		case <-r.refreshCtx.Done():
+			r.lock.Lock()
+			ctx, cancel := context.WithCancel(context.Background())
+			r.refreshCtx = ctx
+			r.refresh = cancel
+			r.lock.Unlock()
 			continue
 		// 计时结束，关闭房间
 		case <-time.After(time.Minute * 30):
 			_ = r.Shutdown()
+			return
+		case <-r.lifetimeCtx.Done():
 			return
 		}
 	}
@@ -240,22 +249,12 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 		// 最后执行删除，防止房间关闭导致空指针访问
 		r.deleteMember(c)
 	})
-
-	var res = wes.Resp{
-		Id:         r.uuid,
-		Method:     "publish.room.in",
-		StatusCode: dataType.Success,
-		Data: MateInfo{
-			Id:    int(c.UserId),
-			Name:  c.UserName,
-			Owner: false,
-			Addr:  c.IP,
-		},
-	}
-	data, _ := json.Marshal(res)
-	go func() {
-		_ = r.Publish(data, c)
-	}()
+	go r.Notice(MateInfo{
+		Id:    int(c.UserId),
+		Name:  c.UserName,
+		Owner: false,
+		Addr:  c.IP,
+	}, "in")
 
 	return nil
 }
@@ -267,35 +266,17 @@ func (r *Room) deleteMember(c *wes.Connection) {
 	if len(r.subs) == 0 {
 		r.shutdownFree()
 	}
-	var leaveRes = wes.Resp{
-		Id:         r.uuid,
-		Method:     "publish.room.out",
-		StatusCode: dataType.Success,
-		Data:       c.UserId,
-	}
-	data, _ := json.Marshal(leaveRes)
-	go func() {
-		_ = r.Publish(data, nil)
-	}()
+	go r.Notice(c.UserId, "out")
 	if c == r.Owner {
 		// 推举下一个房主
-		for ele, _ := range r.subs {
+		for ele := range r.subs {
 			r.Owner = ele
-			var res = wes.Resp{
-				Id:         r.uuid,
-				Method:     "publish.room.exchangeOwner",
-				StatusCode: dataType.Success,
-				Data: struct {
+			go func() {
+				type temp struct {
 					Old int `json:"old"`
 					New int `json:"new"`
-				}{
-					Old: int(c.UserId),
-					New: int(r.Owner.UserId),
-				},
-			}
-			data, _ := json.Marshal(res)
-			go func() {
-				_ = r.Publish(data, c)
+				}
+				r.Notice(temp{Old: int(c.UserId), New: int(r.Owner.UserId)}, "exchangeOwner")
 			}()
 			break
 		}
@@ -321,28 +302,26 @@ func (r *Room) Forbidden(to bool) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.forbidden = to
-	var res = wes.Resp{
-		Id:         r.uuid,
-		Method:     "publish.room.forbidden",
-		StatusCode: dataType.Success,
-		Data:       to,
-	}
-	data, _ := json.Marshal(res)
-	go func() {
-		_ = r.Publish(data, r.Owner)
-	}()
+	go r.Notice(to, "forbidden")
 }
 
 // Notice 发送系统通知
-func (r *Room) Notice(v string) error {
+func (r *Room) Notice(v interface{}, type_ string) {
+	note := "publish.room.notice"
+	if len(type_) > 0 {
+		note += "." + type_
+	}
 	var res = wes.Resp{
 		Id:         r.uuid,
-		Method:     "publish.room.notice",
+		Method:     note,
 		StatusCode: dataType.Success,
 		Data:       v,
 	}
 	data, _ := json.Marshal(res)
-	return r.Publish(data, nil)
+	err := r.Publish(data, nil)
+	if err != nil {
+		loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("room notice of %s err: %v", type_, err))
+	}
 }
 
 // Message 房间内发送消息
@@ -375,10 +354,6 @@ func (r *Room) Publish(v []byte, sender *wes.Connection) error {
 	if r.Config.AutoClose {
 		// 计时器
 		r.refresh()
-		ctx, cancel := context.WithCancel(r.refreshCtx)
-		r.refreshCtx = ctx
-		r.refresh = cancel
-		go r.closer()
 	}
 	for c := range r.subs {
 		// 不向发送者发送消息
@@ -419,34 +394,30 @@ func (r *Room) Nat(to string, key string) {
 func (r *Room) Start(timer string) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if r.closed {
-		return nil
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	r.lifetimeCtx, r.lifetimeEnd = context.WithCancel(context.Background())
+	if r.Config.AutoClose {
+		ctx, cancel := context.WithCancel(context.Background())
 
-	r.refreshCtx = ctx
-	r.refresh = cancel
-	go r.closer()
+		r.refreshCtx = ctx
+		r.refresh = cancel
+		go r.closer()
+	}
 	return nil
 }
 
 // 无锁关闭room，包内防止死锁
 func (r *Room) shutdownFree() {
-	r.refresh()
 	clear(r.subs)
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, r.Owner.UserId))
 	Roomer.Del(r.uuid)
-	r.Owner = nil
-	r.forbidden = true
+	r.lifetimeEnd()
 }
 
 // Shutdown 关闭room
 func (r *Room) Shutdown() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if r.closed {
-		return nil
-	}
+	r.Notice("", "close")
 	r.shutdownFree()
 	return nil
 }
@@ -461,11 +432,8 @@ func NewRoom(owner *wes.Connection, config *RoomConfig) (*Room, error) {
 		lock:   sync.RWMutex{},
 		Config: config,
 	}
-	ok := Roomer.Set(roomName, r)
-	if !ok {
-		return nil, fmt.Errorf("room exsit")
-	}
-	_ = r.Subscribe(owner)
+	r.subs[owner] = struct{}{}
+	_ = Roomer.Set(roomName, r)
 
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
 	_ = r.Start("")

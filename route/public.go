@@ -24,7 +24,7 @@ func InitRoute(g *gin.Engine) {
 
 	// 带token验证的api组
 	sapi := g.Group("/sapi")
-	sapi.Use(middleware.NewLoginStatus().HttpHandle)
+	sapi.Use(middleware.AuthMiddle.HttpHandle)
 	controller.Logout{}.RegisterRoute("/logout", sapi)
 	controller.FreshToken{}.RegisterRoute("/freshToken", sapi)
 
@@ -45,7 +45,7 @@ func InitWs(g *gin.Engine) {
 		wes.UpgradeConn)
 	// 用于ws提供的某些http接口
 	wsApi := g.Group("/ws")
-	wsApi.Use(middleware.NewLoginStatus().HttpHandle)
+	wsApi.Use(middleware.AuthMiddle.HttpHandle)
 
 	baseGroup := wes.NewGroup("base")
 	baseGroup.Register("time", ws.ServerTime)

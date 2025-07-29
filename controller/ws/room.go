@@ -287,7 +287,7 @@ func (r RoomController) RegisterRoute(route string, g *gin.RouterGroup) {
 
 func (r RoomController) RegisterWSRoute(route string, g *wes.Group) {
 	group := g.Group(route)
-	group.Use(middleware.NewLoginStatus().WsHandle)
+	group.Use(middleware.AuthMiddle.WsHandle)
 	group.Register("in", r.GetInRoom)
 	group.Register("out", r.GetOutRoom)
 	group.Register("close", r.CloseRoom)

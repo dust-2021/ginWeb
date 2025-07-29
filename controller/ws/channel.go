@@ -102,7 +102,7 @@ func (c ChannelController) RegisterWSRoute(r string, g *wes.Group) {
 
 	group := g.Group(r)
 
-	group.Register("broadcast", middleware.NewLoginStatus().WsHandle,
+	group.Register("broadcast", middleware.AuthMiddle.WsHandle,
 		middleware.NewPermission([]string{"channel.broadcast"}).WsHandle, c.Broadcast)
 	group.Register("subscribe", c.SubHandle)
 	group.Register("unsubscribe", c.UnsubHandle)

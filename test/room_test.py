@@ -56,17 +56,17 @@ async def sender(l: asyncio.Condition):
         print(await ws.receive())
         await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
             'title': '宝宝巴士', 'maxMember': 16, 'password': '123456',
-            'UserIdBlackList': [2]
+            'UserIdBlackList': [2], 'autoClose': False
         }]}))
         resp = await ws.receive()
         print(resp.data)
         global room
         room = json.loads(resp.data)['data']
-        for i in range(20):
-            await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
-                'title': f'宝宝巴士{i}', 'maxMember': 16, 'password': '123456',
-                'UserIdBlackList': [2]
-            }]}))
+        # for i in range(20):
+        #     await ws.send_str(json.dumps({'id': uuid.uuid4().hex, 'method': 'room.create', 'params': [{
+        #         'title': f'宝宝巴士{i}', 'maxMember': 16, 'password': '123456',
+        #         'UserIdBlackList': [2]
+        #     }]}))
         print('room: ', room)
         async with l:
             l.notify()

@@ -225,6 +225,7 @@ type Connection struct {
 	MacAddress string
 	// 登录信息
 	UserId         int64
+	UserUuid       string
 	UserName       string
 	UserPermission []string
 	AuthExpireTime time.Time
@@ -426,6 +427,7 @@ func (c *Connection) Auth(s string, mac ...string) error {
 	c.UserName = token.Username
 	c.UserPermission = token.Permission
 	c.AuthExpireTime = token.Expire
+	c.UserUuid = token.UserUUID
 	if len(mac) == 1 {
 		c.MacAddress = mac[0]
 	}
