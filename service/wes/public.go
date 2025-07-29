@@ -232,7 +232,9 @@ type Connection struct {
 	// 连接创建时间
 	connectTime time.Time
 	// 断开连接时的任务
-	doneHooks map[string]func()
+	doneHooks  map[string]func()
+	hookChain  []string
+	doHookOnce *sync.Once
 }
 
 // NewConnection 新建连接对象
@@ -251,7 +253,10 @@ func NewConnection(conn *websocket.Conn) *Connection {
 		IP:             conn.RemoteAddr().String(),
 		UserPermission: make([]string, 0),
 		disconnectOnce: &sync.Once{},
-		doneHooks:      make(map[string]func()),
+
+		doneHooks:  make(map[string]func()),
+		hookChain:  make([]string, 0),
+		doHookOnce: &sync.Once{},
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	return c
@@ -413,6 +418,36 @@ func (c *Connection) DoneHook(key string, f func()) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.doneHooks[key] = f
+	c.hookChain = append(c.hookChain, key)
+}
+
+// DeleteDoneHook 删除断连钩子
+func (c *Connection) DeleteDoneHook(key string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	delete(c.doneHooks, key)
+	for idx, hook := range c.hookChain {
+		if hook == key {
+			if idx == len(c.hookChain)-1 {
+				c.hookChain = c.hookChain[:idx]
+			} else {
+				c.hookChain = append(c.hookChain[:idx], c.hookChain[idx+1:]...)
+			}
+			break
+		}
+	}
+}
+
+func (c *Connection) doHook() {
+	c.doHookOnce.Do(func() {
+		for i := len(c.hookChain) - 1; i >= 0; i-- {
+			f, ok := c.doneHooks[c.hookChain[i]]
+			if !ok {
+				continue
+			}
+			f()
+		}
+	})
 }
 
 // Auth 登录认证，可选传入mac地址
@@ -434,19 +469,10 @@ func (c *Connection) Auth(s string, mac ...string) error {
 	return nil
 }
 
-// DeleteDoneHook 删除断连钩子
-func (c *Connection) DeleteDoneHook(key string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	delete(c.doneHooks, key)
-}
-
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
 	c.disconnectOnce.Do(func() {
-		for _, hook := range c.doneHooks {
-			hook()
-		}
+		c.doHook()
 		c.lock.Lock()
 		defer c.lock.Unlock()
 

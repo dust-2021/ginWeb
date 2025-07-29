@@ -37,19 +37,16 @@ func (r *roomManager) Get(name string) (*Room, bool) {
 }
 
 func (r *roomManager) removeIndex(key string) {
-	var index []string
 	for i, v := range r.roomIndex {
 		if v == key {
 			if i == len(r.roomIndex)-1 {
-				r.roomIndex = index
+				r.roomIndex = r.roomIndex[:i]
 			} else {
-				r.roomIndex = append(index, r.roomIndex[i+1:]...)
+				r.roomIndex = append(r.roomIndex[:i], r.roomIndex[i+1:]...)
 			}
 			return
 		}
-		index = append(index, v)
 	}
-	r.roomIndex = index
 }
 
 // Set 添加房间，已存在同名房间则返回false，当房间为空指针时则删除房间
@@ -433,6 +430,14 @@ func NewRoom(owner *wes.Connection, config *RoomConfig) (*Room, error) {
 		Config: config,
 	}
 	r.subs[owner] = struct{}{}
+	owner.DoneHook("publish.room."+r.uuid, func() {
+		r.lock.Lock()
+		defer r.lock.Unlock()
+		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
+			owner.UserId, r.Owner.UserId))
+		// 最后执行删除，防止房间关闭导致空指针访问
+		r.deleteMember(owner)
+	})
 	_ = Roomer.Set(roomName, r)
 
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
