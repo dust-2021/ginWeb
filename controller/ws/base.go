@@ -10,11 +10,14 @@ import (
 	"time"
 )
 
-func ServerTime(w *wes.WContext) {
+type Base struct {
+}
+
+func (b Base) ServerTime(w *wes.WContext) {
 	w.Result(dataType.Success, time.Now().UnixMilli())
 }
 
-func Auth(w *wes.WContext) {
+func (b Base) Auth(w *wes.WContext) {
 	if len(w.Request.Params) < 1 {
 		w.Result(dataType.WrongBody, "wrong body")
 		return
@@ -40,11 +43,17 @@ func Auth(w *wes.WContext) {
 	}
 	result := database.Rdb.SetNX(context.Background(), fmt.Sprintf("ws::unique::%s", w.Conn.UserUuid), true, 0)
 	if r, err := result.Result(); !r || err != nil {
-		w.Result(dataType.WrongData, "auth failed")
+		w.Result(dataType.WsDuplicateAuth, "auth failed")
 		return
 	}
 	w.Conn.DoneHook("breakAuth", func() {
 		database.Rdb.Del(context.Background(), fmt.Sprintf("ws::unique::%s", w.Conn.UserUuid))
 	})
 	w.Result(dataType.Success, "auth success")
+}
+
+func (b Base) RegisterWSRoute(r string, g *wes.Group) {
+	group := g.Group(r)
+	group.Register("time", b.ServerTime)
+	group.Register("auth", b.Auth)
 }

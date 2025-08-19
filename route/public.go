@@ -9,8 +9,9 @@ import (
 	"ginWeb/middleware"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
-	"github.com/gin-gonic/gin"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 import "ginWeb/controller/auth"
 
@@ -47,9 +48,8 @@ func InitWs(g *gin.Engine) {
 	wsApi := g.Group("/ws")
 	wsApi.Use(middleware.AuthMiddle.HttpHandle)
 
-	baseGroup := wes.NewGroup("base")
-	baseGroup.Register("time", ws.ServerTime)
-	baseGroup.Register("auth", ws.Auth)
+	base := ws.Base{}
+	base.RegisterWSRoute("base", wes.BasicGroup)
 
 	channel := ws.ChannelController{}
 	channel.RegisterWSRoute("channel", wes.BasicGroup)

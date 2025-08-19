@@ -5,7 +5,7 @@ import "ginWeb/utils/database"
 // GetPermissionById 获取该用户所有权限
 func GetPermissionById(userid int64) (permissions []string, err error) {
 	db := database.Db
-
+	permissions = make([]string, 0)
 	// 获取所有权限
 	rows, err := db.Raw(`
 select permission_name

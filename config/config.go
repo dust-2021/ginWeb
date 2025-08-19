@@ -1,9 +1,10 @@
 package config
 
 import (
-	"gopkg.in/yaml.v3"
 	"log"
 	"os"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -18,11 +19,10 @@ type Config struct {
 		TokenSize    int    `yaml:"tokenSize"`    // token最大长度
 		TokenExpire  int    `yaml:"tokenExpire"`  // token过期时间
 		Websocket    struct {
-			WsLifeTime      uint32 `yaml:"wsLifeTime"`      // ws连接生命周期
-			WsTaskTimeout   uint32 `yaml:"wsTaskTimeout"`   // ws处理超时
-			WsLoginLifetime uint32 `yaml:"wsLoginLifetime"` // ws登录有效时间
-			WsHeartbeat     uint32 `yaml:"wsHeartbeat"`     // ws心跳检测
-			WsMaxWaiting    uint8  `yaml:"wsMaxWaiting"`    // ws单个连接最大等待处理数量
+			WsLifeTime    uint32 `yaml:"wsLifeTime"`    // ws连接生命周期
+			WsTaskTimeout uint32 `yaml:"wsTaskTimeout"` // ws处理超时
+			WsHeartbeat   uint32 `yaml:"wsHeartbeat"`   // ws心跳检测
+			WsMaxWaiting  uint8  `yaml:"wsMaxWaiting"`  // ws单个连接最大等待处理数量
 		} `yaml:"websocket"`
 		Logger struct {
 			Path  string `yaml:"path"`  // 日志文件位置

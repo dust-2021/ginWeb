@@ -23,9 +23,5 @@ const (
 	UserLimited        = 10107
 
 	WsResolveFailed = 10201
-)
-
-const (
-	ReqExchangeFailed    = 20001
-	ExchangeResultFailed = 20002
+	WsDuplicateAuth = 10202
 )

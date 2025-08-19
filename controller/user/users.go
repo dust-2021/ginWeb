@@ -7,9 +7,10 @@ import (
 	"ginWeb/utils/auth"
 	"ginWeb/utils/database"
 	"ginWeb/utils/tools"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"strconv"
 )
 
 type Users struct {
@@ -137,7 +138,7 @@ func (u Users) Update(ctx *gin.Context) {
 func (u Users) CreatePieces(ctx *gin.Context) {
 	count := ctx.Query("count")
 	c, err := strconv.Atoi(count)
-	if err != nil {
+	if err != nil || c > 20 {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code:    dataType.WrongData,
 			Message: "wrong count",
