@@ -11,11 +11,7 @@ type Pub interface {
 	// Publish 向收听者发送消息
 	Publish([]byte, *wes.Connection) error
 	// Start 启动事件
-	Start(string) error
+	Start(...interface{}) error
 	// Shutdown 关闭事件
 	Shutdown() error
-}
-
-type Sub interface {
-	Muted() bool
 }

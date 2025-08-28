@@ -33,18 +33,9 @@ async def listener(l: asyncio.Condition):
         await ws.send_str(json.dumps(data))
         print('get in room: ', (await ws.receive()).data)
         await ws.send_str(json.dumps({'id': 'get mates', 'method': 'room.roommate', 'params': [room]}))
-        print('get mates: ', (await ws.receive()).data)
-        await asyncio.sleep(5)
-        # count = 0
-        # async for msg in ws:
-        #     count += 1
-        #     if msg.data == "ping":
-        #         await ws.send_str("pong")
-        #         print("heartbeat")
-        #         continue
-        #     print("listen:", msg.data)
-        #     # if count > 20:
-        #     #     break
+
+        async for msg in ws:
+            print(msg.data)
 
 async def sender(l: asyncio.Condition):
     async with aiohttp.ClientSession() as session:
@@ -71,9 +62,9 @@ async def sender(l: asyncio.Condition):
         async with l:
             l.notify()
         for i in range(100):
-            await ws.send_str(json.dumps({
-                'id': '', 'method': 'room.message', 'params': [room, 'hello' + str(i)]
-            }))
+            # await ws.send_str(json.dumps({
+            #     'id': '', 'method': 'room.message', 'params': [room, 'hello' + str(i)]
+            # }))
             await asyncio.sleep(2)
 
 

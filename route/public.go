@@ -60,14 +60,14 @@ func InitWs(g *gin.Engine) {
 
 	// 注册订阅事件
 	if config.Conf.Server.Debug {
-		subscribe.NewPublisher("hello", "1s", func() string {
+		subscribe.Publishers.NewPublisher("hello", "1s", func() string {
 			return "hello"
 		})
 	}
-	subscribe.NewPublisher("time", "*/10 * * * * *", func() string {
+	subscribe.Publishers.NewPublisher("time", "*/10 * * * * *", func() string {
 		return time.Now().Format("2006-01-02 15:04:05.000")
 	})
 
 	// 注册系统大厅
-	subscribe.NewPublisher("hall", "")
+	subscribe.Publishers.NewPublisher("hall", "")
 }

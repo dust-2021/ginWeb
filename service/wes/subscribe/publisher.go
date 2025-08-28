@@ -9,39 +9,71 @@ import (
 	"ginWeb/service/scheduler"
 	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
-	"github.com/robfig/cron/v3"
 	"sync"
 	"time"
+
+	"github.com/robfig/cron/v3"
 )
 
-// ws已注册订阅事件
-var pubs = make(map[string]*Publisher)
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// |                                           管理类                                               |
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-// 已注册订阅事件读写锁
-var pubsLock = sync.RWMutex{}
+var Publishers = &pubManager{
+	lock: sync.RWMutex{}, pubs: make(map[string]*Publisher),
+}
 
-// GetPub 查找订阅事件
-func GetPub(name string) (*Publisher, bool) {
-	pubsLock.RLock()
-	defer pubsLock.RUnlock()
-	pub, ok := pubs[name]
+type pubManager struct {
+	lock sync.RWMutex
+	pubs map[string]*Publisher
+}
+
+// NewPublisher 注册并启动订阅事件，将f函数结果发送至每个订阅者，d为发送周期, d为空字符串时不会注册为定时事件
+func (p *pubManager) NewPublisher(name string, d string, f ...func() string) *Publisher {
+	ctx, cancel := context.WithCancel(context.Background())
+	pub := &Publisher{
+		Name:        name,
+		subscribers: make(map[*wes.Connection]*Subscriber),
+		lock:        sync.RWMutex{},
+		ctx:         ctx,
+		cancel:      cancel,
+		closed:      true,
+	}
+	if len(f) == 0 {
+		pub.f = nil
+	} else {
+		pub.f = f[0]
+	}
+	err := pub.Start(d)
+	if err != nil {
+		loguru.SimpleLog(loguru.Fatal, "WS", "failed start pub:"+err.Error())
+	}
+	p.SetPub(name, pub)
+	return pub
+}
+
+func (p *pubManager) GetPub(n string) (*Publisher, bool) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	pub, ok := p.pubs[n]
 	return pub, ok
 }
 
-// SetPub 设置订阅事件
-func SetPub(name string, pub *Publisher) bool {
-	pubsLock.Lock()
-	defer pubsLock.Unlock()
-	if pub == nil {
-		delete(pubs, name)
-		return true
-	}
-	if _, ok := pubs[name]; ok {
-		return false
-	}
-	pubs[name] = pub
-	return true
+func (p *pubManager) SetPub(n string, pub *Publisher) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.pubs[n] = pub
 }
+
+func (p *pubManager) DelPub(n string) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	delete(p.pubs, n)
+}
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// |                                           订阅事件类                                            |
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 type publisherResp struct {
 	SenderId   int64       `json:"senderId"`
@@ -170,7 +202,14 @@ func (p *Publisher) Shutdown() error {
 	return nil
 }
 
-func (p *Publisher) Start(timer string) error {
+func (p *Publisher) Start(args ...interface{}) error {
+	if len(args) != 1 {
+		return errors.New("invalid args")
+	}
+	timer, ok := args[0].(string)
+	if !ok {
+		return errors.New("invalid args")
+	}
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if !p.closed {
@@ -204,32 +243,9 @@ func (p *Publisher) periodDo(period time.Duration) {
 }
 
 func (p *Publisher) cronDo(cron string) error {
-	_, err := scheduler.App.AddFunc(cron, func() {
+	id, err := scheduler.App.AddFunc(cron, func() {
 		p.Message(p.f(), nil)
 	})
+	p.taskId = id
 	return err
-}
-
-// NewPublisher 注册并启动订阅事件，将f函数结果发送至每个订阅者，d为发送周期, d为空字符串时不会注册为定时事件
-func NewPublisher(name string, d string, f ...func() string) *Publisher {
-	ctx, cancel := context.WithCancel(context.Background())
-	pub := &Publisher{
-		Name:        name,
-		subscribers: make(map[*wes.Connection]*Subscriber),
-		lock:        sync.RWMutex{},
-		ctx:         ctx,
-		cancel:      cancel,
-		closed:      true,
-	}
-	if len(f) == 0 {
-		pub.f = nil
-	} else {
-		pub.f = f[0]
-	}
-	err := pub.Start(d)
-	if err != nil {
-		loguru.SimpleLog(loguru.Fatal, "WS", "failed start pub:"+err.Error())
-	}
-	SetPub(name, pub)
-	return pub
 }

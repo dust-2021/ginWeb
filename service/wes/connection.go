@@ -3,8 +3,10 @@ package wes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"ginWeb/config"
+	reCache "ginWeb/service/cache"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/auth"
 	"ginWeb/utils/loguru"
@@ -35,17 +37,78 @@ var upper = &websocket.Upgrader{
 	},
 }
 
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// |                                           管理类                                               |
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+var ConnManager = &connManager{
+	lock:  &sync.RWMutex{},
+	conns: make(map[string]*Connection),
+}
+
+type connManager struct {
+	lock  *sync.RWMutex
+	conns map[string]*Connection
+}
+
+func (m *connManager) New(conn *websocket.Conn) *Connection {
+	// 创建生命周期管理上下文
+	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
+	c := &Connection{
+		conn:           conn,
+		Uuid:           uuid.New().String(),
+		lifetimeCtx:    ctx,
+		cancel:         cancel,
+		msgChan:        make(chan *payload, config.Conf.Server.Websocket.WsMaxWaiting),
+		heartChan:      make(chan int64, config.Conf.Server.Websocket.WsMaxWaiting),
+		lock:           sync.RWMutex{},
+		connectTime:    time.Now(),
+		IP:             conn.RemoteAddr().String(),
+		UserPermission: make([]string, 0),
+		disconnectOnce: sync.Once{},
+
+		doneHooks:  make(map[string]func()),
+		hookChain:  make([]string, 0),
+		doHookOnce: sync.Once{},
+	}
+	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.conns[c.Uuid] = c
+	c.DoneHook("-", func() {
+		m.Del(c.Uuid)
+	})
+	return c
+}
+
+func (m *connManager) Get(id string) (*Connection, bool) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	c, ok := m.conns[id]
+	return c, ok
+}
+
+func (m *connManager) Del(id string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	delete(m.conns, id)
+}
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// |                                           连接类                                               |
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 // Connection ws连接对象
 type Connection struct {
 	Uuid string
 	conn *websocket.Conn
 	// 生命周期上下文
-	lifetimeCtx    *context.Context
+	lifetimeCtx    context.Context
 	cancel         context.CancelFunc
-	lock           *sync.RWMutex // 对象读写锁
+	lock           sync.RWMutex  // 对象读写锁
 	msgChan        chan *payload // 信息信道
 	heartChan      chan int64    // 心跳监测信道
-	disconnectOnce *sync.Once    // 断开连接单次执行锁
+	disconnectOnce sync.Once     // 断开连接单次执行锁
 
 	IP         string
 	MacAddress string
@@ -57,40 +120,16 @@ type Connection struct {
 	AuthExpireTime time.Time
 	// 连接创建时间
 	connectTime time.Time
-	// 断开连接时的任务
-	doneHooks  map[string]func()
+	// 断开连接时的钩子任务
+	doneHooks map[string]func()
+	// 保证钩子函数执行顺序的顺序列表
 	hookChain  []string
-	doHookOnce *sync.Once
-}
-
-// NewConnection 新建连接对象
-func NewConnection(conn *websocket.Conn) *Connection {
-	// 创建生命周期管理上下文
-	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
-	c := &Connection{
-		conn:           conn,
-		Uuid:           uuid.New().String(),
-		lifetimeCtx:    &ctx,
-		cancel:         cancel,
-		msgChan:        make(chan *payload, config.Conf.Server.Websocket.WsMaxWaiting),
-		heartChan:      make(chan int64, config.Conf.Server.Websocket.WsMaxWaiting),
-		lock:           &sync.RWMutex{},
-		connectTime:    time.Now(),
-		IP:             conn.RemoteAddr().String(),
-		UserPermission: make([]string, 0),
-		disconnectOnce: &sync.Once{},
-
-		doneHooks:  make(map[string]func()),
-		hookChain:  make([]string, 0),
-		doHookOnce: &sync.Once{},
-	}
-	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
-	return c
+	doHookOnce sync.Once
 }
 
 // Done 连接生命周期
 func (c *Connection) Done() <-chan struct{} {
-	return (*c.lifetimeCtx).Done()
+	return c.lifetimeCtx.Done()
 }
 
 // Send 发送消息
@@ -171,6 +210,7 @@ func (c *Connection) listen() {
 			}
 			go c.checkInMessage(false, message)
 		case websocket.BinaryMessage:
+			// TODO 音视频数据流
 			loguru.SimpleLog(loguru.Debug, "WS", "ignore binary message from: "+c.IP)
 			continue
 		case websocket.CloseMessage:
@@ -189,7 +229,7 @@ func (c *Connection) handle() {
 	for {
 		select {
 		// 生命周期结束
-		case <-(*c.lifetimeCtx).Done():
+		case <-c.lifetimeCtx.Done():
 			loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close handle from %s by lifetime over", c.conn.RemoteAddr().String()))
 			return
 		case msg := <-c.msgChan:
@@ -205,7 +245,7 @@ func (c *Connection) handle() {
 func (c *Connection) waitHeartbeat(tick int64) {
 	for {
 		select {
-		case <-(*c.lifetimeCtx).Done():
+		case <-c.lifetimeCtx.Done():
 			c.Disconnect()
 			return
 		case t := <-c.heartChan:
@@ -232,14 +272,14 @@ func (c *Connection) heartbeat() {
 			case t := <-ticker.C:
 				_ = c.Send([]byte("ping"))
 				go c.waitHeartbeat(t.Unix())
-			case <-(*c.lifetimeCtx).Done():
+			case <-c.lifetimeCtx.Done():
 				return
 			}
 		}
 	}()
 }
 
-// DoneHook 添加断开连接钩子函数
+// DoneHook 添加断开连接钩子函数，hook是有序的，先进后出原则
 func (c *Connection) DoneHook(key string, f func()) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -278,6 +318,10 @@ func (c *Connection) doHook() {
 
 // Auth 登录认证，可选传入mac地址
 func (c *Connection) Auth(s string, mac ...string) error {
+	_, err := reCache.Get("blackToken", s)
+	if err == nil {
+		return errors.New("black token")
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	token, err := auth.CheckToken(s)
@@ -329,7 +373,7 @@ func UpgradeConn(c *gin.Context) {
 		loguru.SimpleLog(loguru.Trace, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
 		return conn.WriteMessage(websocket.TextMessage, []byte("pong"))
 	})
-	connect := NewConnection(conn)
+	connect := ConnManager.New(conn)
 	// 设置连接关闭时调用管理对象的Disconnect方法
 	conn.SetCloseHandler(func(code int, text string) error {
 		connect.Disconnect()

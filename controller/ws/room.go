@@ -7,9 +7,10 @@ import (
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
 	"ginWeb/utils/tools"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 type RoomController struct {
@@ -19,7 +20,7 @@ type RoomController struct {
 // params: [config: subscribe.RoomConfig]
 func (r RoomController) CreateRoom(w *wes.WContext) {
 	if len(w.Request.Params) == 0 {
-		w.Result(dataType.WrongBody, "Room Create Failed without config")
+		w.Result(dataType.WrongBody, "room Create Failed without config")
 		return
 	}
 	var conf subscribe.RoomConfig
@@ -28,7 +29,7 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, err.Error())
 		return
 	}
-	room, err := subscribe.NewRoom(w.Conn, &conf)
+	room, err := subscribe.Roomer.NewRoom(w.Conn, &conf)
 	if err != nil {
 		w.Result(dataType.Unknown, err.Error())
 		return

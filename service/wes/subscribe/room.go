@@ -8,19 +8,98 @@ import (
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
-	"github.com/google/uuid"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// |                                          相关数据类型                                           |
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+// MateInfo 接口返回的房间成员信息
+type MateInfo struct {
+	Name  string `json:"name"`
+	Id    int    `json:"id"`
+	Addr  string `json:"addr"`
+	Owner bool   `json:"owner"`
+	Vlan  string `json:"vlan"`
+}
+
+type RoomInfo struct {
+	RoomID       string `json:"roomId"`
+	RoomTitle    string `json:"roomTitle"`
+	Description  string `json:"description"`
+	OwnerID      int64  `json:"ownerId"`
+	OwnerName    string `json:"ownerName"`
+	MemberCount  int    `json:"memberCount"`
+	MaxMember    int    `json:"memberMax"`
+	WithPassword bool   `json:"withPassword"`
+	Forbidden    bool   `json:"forbidden"`
+}
+
+type mateAttr struct {
+	Vlan uint16
+}
+
+// RoomConfig 房间设置
+type RoomConfig struct {
+	Title           string   `json:"title" validate:"required,max=12,min=2"`               // 标题
+	Description     string   `json:"description" validate:"max=128"`                       // 描述
+	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=256"`                   // 最大成员数
+	Password        *string  `json:"password,omitempty" validate:"omitempty,max=16,min=6"` // 房间密码
+	IPBlackList     []string `json:"blackList"`                                            // ip黑名单
+	UserIdBlackList []int64  `json:"UserIdBlackList"`                                      // id黑名单
+	DeviceBlackList []string `json:"deviceBlackList"`                                      // 设备黑名单
+	AutoClose       bool     `json:"autoClose"`                                            // 是否自动关闭
+}
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// |                                           房间管理器                                            |
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 // Roomer 房间管理器单例
-var Roomer *roomManager
+var Roomer = &roomManager{
+	rooms: make(map[string]*room), roomIndex: make([]string, 0), lock: sync.RWMutex{},
+}
 
 // roomManager 房间管理类
 type roomManager struct {
-	rooms     map[string]*Room
+	rooms     map[string]*room
 	roomIndex []string // 排序器
 	lock      sync.RWMutex
+}
+
+func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig) (*room, error) {
+	roomName := uuid.New().String()
+	newRoom := &room{
+		uuid:      roomName,
+		subs:      make(map[*wes.Connection]mateAttr),
+		Owner:     owner,
+		lock:      sync.RWMutex{},
+		Config:    config,
+		vlan:      make(chan uint16, 1<<16),
+		vlanYield: 0,
+	}
+	connVlan, err := newRoom.yieldVlan()
+	if err != nil {
+		return nil, err
+	}
+	newRoom.subs[owner] = mateAttr{Vlan: connVlan}
+	owner.DoneHook("publish.room."+newRoom.uuid, func() {
+		newRoom.lock.Lock()
+		defer newRoom.lock.Unlock()
+		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
+			owner.UserId, newRoom.Owner.UserId))
+		// 最后执行删除，防止房间关闭导致空指针访问
+		newRoom.deleteMember(owner)
+	})
+	_ = r.Set(roomName, newRoom)
+
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
+	_ = newRoom.Start("")
+	return newRoom, nil
 }
 
 func (r *roomManager) Size() int {
@@ -29,7 +108,7 @@ func (r *roomManager) Size() int {
 	return len(Roomer.roomIndex)
 }
 
-func (r *roomManager) Get(name string) (*Room, bool) {
+func (r *roomManager) Get(name string) (*room, bool) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	v, ok := r.rooms[name]
@@ -49,15 +128,10 @@ func (r *roomManager) removeIndex(key string) {
 	}
 }
 
-// Set 添加房间，已存在同名房间则返回false，当房间为空指针时则删除房间
-func (r *roomManager) Set(name string, room *Room) bool {
+// Set 添加房间，已存在同名房间则返回false
+func (r *roomManager) Set(name string, room *room) bool {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if room == nil {
-		delete(r.rooms, name)
-		r.removeIndex(name)
-		return true
-	}
 	if _, ok := r.rooms[name]; ok {
 		return false
 	}
@@ -91,53 +165,33 @@ func (r *roomManager) List(page int, size int) []RoomInfo {
 		end = len(r.roomIndex)
 	}
 	for _, key := range r.roomIndex[start:end] {
-		room, ok := r.rooms[key]
+		room_, ok := r.rooms[key]
 		if !ok {
 			continue
 		}
 		item := RoomInfo{
-			RoomID:       room.uuid,
-			RoomTitle:    room.Config.Title,
-			Description:  room.Config.Description,
-			OwnerID:      room.Owner.UserId,
-			OwnerName:    room.Owner.UserName,
-			MemberCount:  len(room.subs),
-			MaxMember:    room.Config.MaxMember,
-			WithPassword: *room.Config.Password != "",
-			Forbidden:    room.forbidden,
+			RoomID:       room_.uuid,
+			RoomTitle:    room_.Config.Title,
+			Description:  room_.Config.Description,
+			OwnerID:      room_.Owner.UserId,
+			OwnerName:    room_.Owner.UserName,
+			MemberCount:  len(room_.subs),
+			MaxMember:    room_.Config.MaxMember,
+			WithPassword: *room_.Config.Password != "",
+			Forbidden:    room_.forbidden,
 		}
 		infos = append(infos, item)
 	}
 	return infos
 }
 
-type RoomInfo struct {
-	RoomID       string `json:"roomId"`
-	RoomTitle    string `json:"roomTitle"`
-	Description  string `json:"description"`
-	OwnerID      int64  `json:"ownerId"`
-	OwnerName    string `json:"ownerName"`
-	MemberCount  int    `json:"memberCount"`
-	MaxMember    int    `json:"memberMax"`
-	WithPassword bool   `json:"withPassword"`
-	Forbidden    bool   `json:"forbidden"`
-}
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// |                                           房间对象                                              |
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-// RoomConfig 房间设置
-type RoomConfig struct {
-	Title           string   `json:"title" validate:"required,max=12,min=2"`               // 标题
-	Description     string   `json:"description" validate:"max=128"`                       // 描述
-	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=32"`                    // 最大成员数
-	Password        *string  `json:"password,omitempty" validate:"omitempty,max=16,min=6"` // 房间密码
-	IPBlackList     []string `json:"blackList"`                                            // ip黑名单
-	UserIdBlackList []int64  `json:"UserIdBlackList"`                                      // id黑名单
-	DeviceBlackList []string `json:"deviceBlackList"`                                      // 设备黑名单
-	AutoClose       bool     `json:"autoClose"`                                            // 是否自动关闭
-}
-
-type Room struct {
+type room struct {
 	uuid   string                       // id
-	subs   map[*wes.Connection]struct{} // 成员ws连接对象
+	subs   map[*wes.Connection]mateAttr // 成员ws连接对象
 	lock   sync.RWMutex                 // 对象读写锁
 	Owner  *wes.Connection              // 房间持有者
 	Config *RoomConfig                  `json:"config"` //房间设置
@@ -148,46 +202,59 @@ type Room struct {
 
 	lifetimeCtx context.Context
 	lifetimeEnd context.CancelFunc
+
+	vlan      chan uint16 // 分配给每个成员的vlan IP后两段
+	vlanYield int
 }
 
-func (r *Room) UUID() string {
+func (r *room) UUID() string {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.uuid
 }
 
-func (r *Room) ExistMember(c *wes.Connection) bool {
+func (r *room) ExistMember(c *wes.Connection) bool {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	_, ok := r.subs[c]
 	return ok
 }
 
-type MateInfo struct {
-	Name  string `json:"name"`
-	Id    int    `json:"id"`
-	Addr  string `json:"addr"`
-	Owner bool   `json:"owner"`
-}
-
 // Mates 所有成员
-func (r *Room) Mates() []MateInfo {
+func (r *room) Mates() []MateInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	resp := make([]MateInfo, 0)
-	for c := range r.subs {
+	for c, attr := range r.subs {
 		resp = append(resp, MateInfo{
 			Name:  c.UserName,
 			Id:    int(c.UserId),
 			Addr:  c.IP,
 			Owner: c == r.Owner,
+			Vlan:  fmt.Sprintf("%d.%d", attr.Vlan>>8, attr.Vlan-(attr.Vlan>>8)),
 		})
 	}
 	return resp
 }
 
+// 获取分配的IP段，已分配完时等待回收
+func (r *room) yieldVlan() (vlan uint16, err error) {
+	if r.vlanYield < 65536 {
+		vlan = uint16(r.vlanYield)
+		r.vlanYield++
+		return
+	}
+	select {
+	case vlan = <-r.vlan:
+		return
+	case <-time.After(time.Second * 5):
+		err = errors.New("vlanYield timeout")
+		return 0, err
+	}
+}
+
 // 生命周期管理，维持一个计时器，自动关闭设置开启时生效，publish方法被调用后刷新计时器
-func (r *Room) closer() {
+func (r *room) closer() {
 	// 未设置自动管理关闭直接退出
 	if !r.Config.AutoClose {
 		return
@@ -213,7 +280,7 @@ func (r *Room) closer() {
 }
 
 // Subscribe 订阅房间
-func (r *Room) Subscribe(c *wes.Connection) error {
+func (r *room) Subscribe(c *wes.Connection) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if _, ok := r.subs[c]; ok {
@@ -235,7 +302,11 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 			return errors.New("black user id")
 		}
 	}
-	r.subs[c] = struct{}{}
+	connVlan, err := r.yieldVlan()
+	if err != nil {
+		return err
+	}
+	r.subs[c] = mateAttr{Vlan: connVlan}
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", c.UserId, r.Owner.UserId))
 	// 将退出房间添加打ws连接关闭钩子中
 	c.DoneHook("publish.room."+r.uuid, func() {
@@ -257,7 +328,7 @@ func (r *Room) Subscribe(c *wes.Connection) error {
 }
 
 // 删除成员并检测房间成员数量和房主转移
-func (r *Room) deleteMember(c *wes.Connection) {
+func (r *room) deleteMember(c *wes.Connection) {
 	delete(r.subs, c)
 	// 全部退出后关闭room
 	if len(r.subs) == 0 {
@@ -281,7 +352,7 @@ func (r *Room) deleteMember(c *wes.Connection) {
 }
 
 // UnSubscribe 退出房间
-func (r *Room) UnSubscribe(c *wes.Connection) error {
+func (r *room) UnSubscribe(c *wes.Connection) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -295,7 +366,7 @@ func (r *Room) UnSubscribe(c *wes.Connection) error {
 }
 
 // Forbidden 房间禁止进入
-func (r *Room) Forbidden(to bool) {
+func (r *room) Forbidden(to bool) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.forbidden = to
@@ -303,7 +374,7 @@ func (r *Room) Forbidden(to bool) {
 }
 
 // Notice 发送系统通知
-func (r *Room) Notice(v interface{}, type_ string) {
+func (r *room) Notice(v interface{}, type_ string) {
 	note := "publish.room.notice"
 	if len(type_) > 0 {
 		note += "." + type_
@@ -322,7 +393,7 @@ func (r *Room) Notice(v interface{}, type_ string) {
 }
 
 // Message 房间内发送消息
-func (r *Room) Message(msg string, sender *wes.Connection) {
+func (r *room) Message(msg string, sender *wes.Connection) {
 	var res = wes.Resp{
 		Id:         r.uuid,
 		Method:     "publish.room.message",
@@ -342,7 +413,7 @@ func (r *Room) Message(msg string, sender *wes.Connection) {
 }
 
 // Publish 向所有成员广播消息，提供sender后不向sender发送
-func (r *Room) Publish(v []byte, sender *wes.Connection) error {
+func (r *room) Publish(v []byte, sender *wes.Connection) error {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	if len(v) == 0 {
@@ -368,10 +439,10 @@ func (r *Room) Publish(v []byte, sender *wes.Connection) error {
 }
 
 // Nat 成员一对一约定nat打洞
-// to: 目标成员ip key: 唯一识别码
-func (r *Room) Nat(to string, key string) {
+// to: 目标成员ip，为“*”时指向所有成员 key: 唯一识别码
+func (r *room) Nat(to string, key string) {
 	for c := range r.subs {
-		if c.IP == to {
+		if to == "*" || c.IP == to {
 			resp := wes.Resp{
 				Id:         "",
 				Method:     "publish.room.nat",
@@ -388,7 +459,7 @@ func (r *Room) Nat(to string, key string) {
 }
 
 // Start 启动
-func (r *Room) Start(timer string) error {
+func (r *room) Start(...interface{}) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.lifetimeCtx, r.lifetimeEnd = context.WithCancel(context.Background())
@@ -403,7 +474,7 @@ func (r *Room) Start(timer string) error {
 }
 
 // 无锁关闭room，包内防止死锁
-func (r *Room) shutdownFree() {
+func (r *room) shutdownFree() {
 	clear(r.subs)
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, r.Owner.UserId))
 	Roomer.Del(r.uuid)
@@ -411,42 +482,10 @@ func (r *Room) shutdownFree() {
 }
 
 // Shutdown 关闭room
-func (r *Room) Shutdown() error {
+func (r *room) Shutdown() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.Notice("", "close")
 	r.shutdownFree()
 	return nil
-}
-
-// NewRoom 创建room并开启，已存在则返回false
-func NewRoom(owner *wes.Connection, config *RoomConfig) (*Room, error) {
-	roomName := uuid.New().String()
-	r := &Room{
-		uuid:   roomName,
-		subs:   make(map[*wes.Connection]struct{}),
-		Owner:  owner,
-		lock:   sync.RWMutex{},
-		Config: config,
-	}
-	r.subs[owner] = struct{}{}
-	owner.DoneHook("publish.room."+r.uuid, func() {
-		r.lock.Lock()
-		defer r.lock.Unlock()
-		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
-			owner.UserId, r.Owner.UserId))
-		// 最后执行删除，防止房间关闭导致空指针访问
-		r.deleteMember(owner)
-	})
-	_ = Roomer.Set(roomName, r)
-
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
-	_ = r.Start("")
-	return r, nil
-}
-
-func init() {
-	Roomer = &roomManager{
-		rooms: make(map[string]*Room),
-	}
 }

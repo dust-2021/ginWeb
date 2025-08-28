@@ -6,8 +6,9 @@ import (
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
-	"github.com/gin-gonic/gin"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 type ChannelController struct {
@@ -27,7 +28,7 @@ func (c ChannelController) SubHandle(w *wes.WContext) {
 			failedKeys = append(failedKeys, n)
 			continue
 		}
-		pub, ok := subscribe.GetPub(n)
+		pub, ok := subscribe.Publishers.GetPub(n)
 		if ok {
 			_ = pub.Subscribe(w.Conn)
 		} else {
@@ -55,7 +56,7 @@ func (c ChannelController) UnsubHandle(w *wes.WContext) {
 			failedKeys = append(failedKeys, n)
 			continue
 		}
-		pub, ok := subscribe.GetPub(n)
+		pub, ok := subscribe.Publishers.GetPub(n)
 		if ok {
 			_ = pub.UnSubscribe(w.Conn)
 		} else {
@@ -87,7 +88,7 @@ func (c ChannelController) Broadcast(w *wes.WContext) {
 	if err != nil {
 		w.Result(dataType.WrongBody, "invalid msg")
 	}
-	pub, ok := subscribe.GetPub(name)
+	pub, ok := subscribe.Publishers.GetPub(name)
 	if !ok {
 		w.Result(dataType.NotFound, "not found pub")
 		return
