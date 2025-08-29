@@ -322,19 +322,21 @@ func (r *room) Subscribe(c *wes.Connection) error {
 		Name:  c.UserName,
 		Owner: false,
 		Addr:  c.IP,
-	}, "in")
+	}, "in", c)
 
 	return nil
 }
 
 // 删除成员并检测房间成员数量和房主转移
 func (r *room) deleteMember(c *wes.Connection) {
+	// 回收分配的IP网段
+	r.vlan <- r.subs[c].Vlan
 	delete(r.subs, c)
 	// 全部退出后关闭room
 	if len(r.subs) == 0 {
 		r.shutdownFree()
 	}
-	go r.Notice(c.UserId, "out")
+	go r.Notice(c.UserId, "out", c)
 	if c == r.Owner {
 		// 推举下一个房主
 		for ele := range r.subs {
@@ -344,7 +346,7 @@ func (r *room) deleteMember(c *wes.Connection) {
 					Old int `json:"old"`
 					New int `json:"new"`
 				}
-				r.Notice(temp{Old: int(c.UserId), New: int(r.Owner.UserId)}, "exchangeOwner")
+				r.Notice(temp{Old: int(c.UserId), New: int(r.Owner.UserId)}, "exchangeOwner", nil)
 			}()
 			break
 		}
@@ -370,11 +372,11 @@ func (r *room) Forbidden(to bool) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.forbidden = to
-	go r.Notice(to, "forbidden")
+	go r.Notice(to, "forbidden", nil)
 }
 
-// Notice 发送系统通知
-func (r *room) Notice(v interface{}, type_ string) {
+// Notice 发送系统通知，sender为通知触发者，不会收到消息，不会显式出现在报文中
+func (r *room) Notice(v interface{}, type_ string, sender *wes.Connection) {
 	note := "publish.room.notice"
 	if len(type_) > 0 {
 		note += "." + type_
@@ -386,7 +388,7 @@ func (r *room) Notice(v interface{}, type_ string) {
 		Data:       v,
 	}
 	data, _ := json.Marshal(res)
-	err := r.Publish(data, nil)
+	err := r.Publish(data, sender)
 	if err != nil {
 		loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("room notice of %s err: %v", type_, err))
 	}
@@ -485,7 +487,7 @@ func (r *room) shutdownFree() {
 func (r *room) Shutdown() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	r.Notice("", "close")
+	r.Notice("", "close", nil)
 	r.shutdownFree()
 	return nil
 }
