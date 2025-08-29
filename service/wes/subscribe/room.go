@@ -322,6 +322,7 @@ func (r *room) Subscribe(c *wes.Connection) error {
 		Name:  c.UserName,
 		Owner: false,
 		Addr:  c.IP,
+		Vlan:  fmt.Sprintf("%d.%d", connVlan>>8, connVlan-(connVlan>>8)),
 	}, "in", c)
 
 	return nil
