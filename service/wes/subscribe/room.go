@@ -8,6 +8,7 @@ import (
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/utils/loguru"
+	"slices"
 	"sync"
 	"time"
 
@@ -292,10 +293,8 @@ func (r *room) Subscribe(c *wes.Connection) error {
 	if r.Config.MaxMember != 0 && len(r.subs) >= r.Config.MaxMember {
 		return errors.New("room is full")
 	}
-	for _, ip := range r.Config.IPBlackList {
-		if ip == c.IP {
-			return errors.New("black ip")
-		}
+	if slices.Contains(r.Config.IPBlackList, c.IP) {
+		return errors.New("black ip")
 	}
 	for _, id := range r.Config.UserIdBlackList {
 		if id == c.UserId {
