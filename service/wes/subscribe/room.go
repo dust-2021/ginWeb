@@ -25,7 +25,7 @@ type MateInfo struct {
 	Id    int    `json:"id"`
 	Addr  string `json:"addr"`
 	Owner bool   `json:"owner"`
-	Vlan  string `json:"vlan"`
+	Vlan  int    `json:"vlan"`
 }
 
 type RoomInfo struct {
@@ -41,7 +41,7 @@ type RoomInfo struct {
 }
 
 type mateAttr struct {
-	Vlan uint16
+	Vlan uint8
 }
 
 // RoomConfig 房间设置
@@ -80,8 +80,8 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig) (*room,
 		Owner:     owner,
 		lock:      sync.RWMutex{},
 		Config:    config,
-		vlan:      make(chan uint16, 1<<16),
-		vlanYield: 0,
+		vlan:      make(chan uint8, 254),
+		vlanYield: 1,
 	}
 	connVlan, err := newRoom.yieldVlan()
 	if err != nil {
@@ -89,16 +89,18 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig) (*room,
 	}
 	newRoom.subs[owner] = mateAttr{Vlan: connVlan}
 	owner.DoneHook("publish.room."+newRoom.uuid, func() {
+		info := owner.AuthInfo()
 		newRoom.lock.Lock()
 		defer newRoom.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
-			owner.UserId, newRoom.Owner.UserId))
+			info.UserId, info.UserId))
 		// 最后执行删除，防止房间关闭导致空指针访问
 		newRoom.deleteMember(owner)
 	})
 	_ = r.Set(roomName, newRoom)
 
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
+	ownerInfo := owner.AuthInfo()
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", ownerInfo.Username, ownerInfo.UserId, roomName))
 	_ = newRoom.Start("")
 	return newRoom, nil
 }
@@ -170,12 +172,13 @@ func (r *roomManager) List(page int, size int) []RoomInfo {
 		if !ok {
 			continue
 		}
+		ownerInfo := room_.Owner.AuthInfo()
 		item := RoomInfo{
 			RoomID:       room_.uuid,
 			RoomTitle:    room_.Config.Title,
 			Description:  room_.Config.Description,
-			OwnerID:      room_.Owner.UserId,
-			OwnerName:    room_.Owner.UserName,
+			OwnerID:      ownerInfo.UserId,
+			OwnerName:    ownerInfo.Username,
 			MemberCount:  len(room_.subs),
 			MaxMember:    room_.Config.MaxMember,
 			WithPassword: *room_.Config.Password != "",
@@ -204,8 +207,8 @@ type room struct {
 	lifetimeCtx context.Context
 	lifetimeEnd context.CancelFunc
 
-	vlan      chan uint16 // 分配给每个成员的vlan IP后两段
-	vlanYield int
+	vlan      chan uint8 // 回收的网段分配
+	vlanYield uint8      //生成网段分配
 }
 
 func (r *room) UUID() string {
@@ -227,21 +230,22 @@ func (r *room) Mates() []MateInfo {
 	defer r.lock.RUnlock()
 	resp := make([]MateInfo, 0)
 	for c, attr := range r.subs {
+		authInfo := c.AuthInfo()
 		resp = append(resp, MateInfo{
-			Name:  c.UserName,
-			Id:    int(c.UserId),
+			Name:  authInfo.Username,
+			Id:    int(authInfo.UserId),
 			Addr:  c.IP,
 			Owner: c == r.Owner,
-			Vlan:  fmt.Sprintf("%d.%d", attr.Vlan>>8, attr.Vlan-(attr.Vlan>>8)),
+			Vlan:  int(attr.Vlan),
 		})
 	}
 	return resp
 }
 
 // 获取分配的IP段，已分配完时等待回收
-func (r *room) yieldVlan() (vlan uint16, err error) {
-	if r.vlanYield < 65536 {
-		vlan = uint16(r.vlanYield)
+func (r *room) yieldVlan() (vlan uint8, err error) {
+	if r.vlanYield < 255 {
+		vlan = r.vlanYield
 		r.vlanYield++
 		return
 	}
@@ -296,8 +300,9 @@ func (r *room) Subscribe(c *wes.Connection) error {
 	if slices.Contains(r.Config.IPBlackList, c.IP) {
 		return errors.New("black ip")
 	}
+	authInfo := c.AuthInfo()
 	for _, id := range r.Config.UserIdBlackList {
-		if id == c.UserId {
+		if id == authInfo.UserId {
 			return errors.New("black user id")
 		}
 	}
@@ -306,22 +311,22 @@ func (r *room) Subscribe(c *wes.Connection) error {
 		return err
 	}
 	r.subs[c] = mateAttr{Vlan: connVlan}
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room of %d", c.UserId, r.Owner.UserId))
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room %s", authInfo.UserId, r.uuid))
 	// 将退出房间添加打ws连接关闭钩子中
 	c.DoneHook("publish.room."+r.uuid, func() {
 		r.lock.Lock()
 		defer r.lock.Unlock()
-		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
-			c.UserId, r.Owner.UserId))
+		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room %s by done hook",
+			authInfo.UserId, r.UUID()))
 		// 最后执行删除，防止房间关闭导致空指针访问
 		r.deleteMember(c)
 	})
 	go r.Notice(MateInfo{
-		Id:    int(c.UserId),
-		Name:  c.UserName,
+		Id:    int(authInfo.UserId),
+		Name:  authInfo.Username,
 		Owner: false,
 		Addr:  c.IP,
-		Vlan:  fmt.Sprintf("%d.%d", connVlan>>8, connVlan-(connVlan>>8)),
+		Vlan:  int(connVlan),
 	}, "in", c)
 
 	return nil
@@ -336,7 +341,8 @@ func (r *room) deleteMember(c *wes.Connection) {
 	if len(r.subs) == 0 {
 		r.shutdownFree()
 	}
-	go r.Notice(c.UserId, "out", c)
+	info := c.AuthInfo()
+	go r.Notice(info.UserId, "out", c)
 	if c == r.Owner {
 		// 推举下一个房主
 		for ele := range r.subs {
@@ -346,7 +352,7 @@ func (r *room) deleteMember(c *wes.Connection) {
 					Old int `json:"old"`
 					New int `json:"new"`
 				}
-				r.Notice(temp{Old: int(c.UserId), New: int(r.Owner.UserId)}, "exchangeOwner", nil)
+				r.Notice(temp{Old: int(info.UserId), New: int(r.Owner.AuthInfo().UserId)}, "exchangeOwner", nil)
 			}()
 			break
 		}
@@ -361,7 +367,8 @@ func (r *room) UnSubscribe(c *wes.Connection) error {
 	if _, ok := r.subs[c]; !ok {
 		return nil
 	}
-	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %d", c.UserId, r.Owner.UserId))
+	authInfo := c.AuthInfo()
+	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %s", authInfo.UserId, r.uuid))
 	r.deleteMember(c)
 	c.DeleteDoneHook("publish.room." + r.uuid)
 	return nil
@@ -396,13 +403,14 @@ func (r *room) Notice(v interface{}, type_ string, sender *wes.Connection) {
 
 // Message 房间内发送消息
 func (r *room) Message(msg string, sender *wes.Connection) {
+	senderInfo := sender.AuthInfo()
 	var res = wes.Resp{
 		Id:         r.uuid,
 		Method:     "publish.room.message",
 		StatusCode: dataType.Success,
 		Data: publisherResp{
-			SenderId:   sender.UserId,
-			SenderName: sender.UserName,
+			SenderId:   senderInfo.UserId,
+			SenderName: senderInfo.Username,
 			Timestamp:  time.Now().UnixMilli(),
 			Data:       msg,
 		},
@@ -433,31 +441,11 @@ func (r *room) Publish(v []byte, sender *wes.Connection) error {
 
 		err := c.Send(v)
 		if err != nil {
-			loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send to member %s failed", c.UserName))
+			loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send to member %s failed", c.AuthInfo().Username))
 		}
 	}
 
 	return nil
-}
-
-// Nat 成员一对一约定nat打洞
-// to: 目标成员ip，为“*”时指向所有成员 key: 唯一识别码
-func (r *room) Nat(to string, key string) {
-	for c := range r.subs {
-		if to == "*" || c.IP == to {
-			resp := wes.Resp{
-				Id:         "",
-				Method:     "publish.room.nat",
-				StatusCode: dataType.Success,
-				Data:       key,
-			}
-			data, _ := json.Marshal(resp)
-			err := c.Send(data)
-			if err != nil {
-				loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send nat msg to member %s failed", c.UserName))
-			}
-		}
-	}
 }
 
 // Start 启动
@@ -478,7 +466,8 @@ func (r *room) Start(...interface{}) error {
 // 无锁关闭room，包内防止死锁
 func (r *room) shutdownFree() {
 	clear(r.subs)
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, r.Owner.UserId))
+	ownerInfo := r.Owner.AuthInfo()
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, ownerInfo.UserId))
 	Roomer.Del(r.uuid)
 	r.lifetimeEnd()
 }

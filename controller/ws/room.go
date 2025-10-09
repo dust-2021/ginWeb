@@ -122,7 +122,7 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 		w.Result(dataType.NotFound, "room not found")
 		return
 	}
-	if room.Owner.UserId != w.Conn.UserId {
+	if room.Owner.AuthInfo().UserId != w.Conn.AuthInfo().UserId {
 		w.Result(dataType.DeniedByPermission, "you are not room owner")
 		return
 	}
@@ -149,7 +149,7 @@ func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 	if !ok {
 		w.Result(dataType.NotFound, "room not found")
 	}
-	if room.Owner.UserId != w.Conn.UserId {
+	if room.Owner.AuthInfo().UserId != w.Conn.AuthInfo().UserId {
 		w.Result(dataType.DeniedByPermission, "you are not room owner")
 		return
 	}
@@ -239,14 +239,14 @@ func (r RoomController) Nat(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalided targets")
 		return
 	}
-	room, ok := subscribe.Roomer.Get(roomId)
-	if !ok {
-		w.Result(dataType.NotFound, "room not found")
-		return
-	}
-	for _, target := range targets {
-		room.Nat(target, key)
-	}
+	//room, ok := subscribe.Roomer.Get(roomId)
+	//if !ok {
+	//	w.Result(dataType.NotFound, "room not found")
+	//	return
+	//}
+	//for _, target := range targets {
+	//	room.Nat(target, key)
+	//}
 }
 
 // ListRoom 所有房间信息接口

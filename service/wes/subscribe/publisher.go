@@ -144,8 +144,9 @@ func (p *Publisher) Message(v string, sender *wes.Connection) {
 	var id int64
 	var name string
 	if sender != nil {
-		id = sender.UserId
-		name = sender.UserName
+		temp := sender.AuthInfo()
+		id = temp.UserId
+		name = temp.Username
 	}
 	var r = wes.Resp{
 		Id:         "publish." + p.Name,

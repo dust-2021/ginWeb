@@ -1,31 +1,22 @@
-import asyncio
-import json
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
+import base64
 
-import aiohttp
+# 生成ED25519密钥对
+private_key = ed25519.Ed25519PrivateKey.generate()
+public_key = private_key.public_key()
 
+# 获取原始32字节密钥
+private_bytes = private_key.private_bytes(
+    encoding=serialization.Encoding.Raw,
+    format=serialization.PrivateFormat.Raw,
+    encryption_algorithm=serialization.NoEncryption()
+)
 
-async def login(session: aiohttp.ClientSession) -> str:
-    user = "mole"
-    password = "123456"
-    resp = await session.post("http://127.0.0.1:8000/api/login",
-                              data=json.dumps({"username": user, "password": password}))
-    info = await resp.json()
-    print(info)
-    return info['data']
+public_bytes = public_key.public_bytes(
+    encoding=serialization.Encoding.Raw,
+    format=serialization.PublicFormat.Raw
+)
 
-
-
-async def create_user(username: str, password: str):
-    session = aiohttp.ClientSession()
-    token = await login(session)
-
-    session.headers["Token"] = token
-    resp = await session.post('http://127.0.0.1:8000/sapi/system/user/create', data=json.dumps({
-        'username': username, 'password': password
-    }))
-    print(await resp.text())
-    await session.close()
-
-
-if __name__ == '__main__':
-    asyncio.run(create_user('test', '123456'))
+print(base64.b64encode(public_bytes).decode('ascii'), list(public_bytes))
+print(base64.b64encode(private_bytes).decode('ascii'), list(private_bytes))

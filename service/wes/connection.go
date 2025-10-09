@@ -64,7 +64,7 @@ func (m *connManager) New(conn *websocket.Conn) *Connection {
 		lock:           sync.RWMutex{},
 		connectTime:    time.Now(),
 		IP:             conn.RemoteAddr().String(),
-		UserPermission: make([]string, 0),
+		userPermission: make([]string, 0),
 		disconnectOnce: sync.Once{},
 
 		doneHooks:  make(map[string]func()),
@@ -110,14 +110,14 @@ type Connection struct {
 	heartChan      chan int64    // 心跳监测信道
 	disconnectOnce sync.Once     // 断开连接单次执行锁
 
-	IP         string
-	MacAddress string
+	IP         string // 客户端IP，不可变
+	MacAddress string // 客户端mac，不可变
 	// 登录信息
-	UserId         int64
-	UserUuid       string
-	UserName       string
-	UserPermission []string
-	AuthExpireTime time.Time
+	userId         int64
+	userUuid       string
+	userName       string
+	userPermission []string
+	authExpireTime time.Time
 	// 连接创建时间
 	connectTime time.Time
 	// 断开连接时的钩子任务
@@ -304,6 +304,7 @@ func (c *Connection) DeleteDoneHook(key string) {
 	}
 }
 
+// 执行所有断联钩子函数，once保证单次执行
 func (c *Connection) doHook() {
 	c.doHookOnce.Do(func() {
 		for i := len(c.hookChain) - 1; i >= 0; i-- {
@@ -316,28 +317,47 @@ func (c *Connection) doHook() {
 	})
 }
 
+// ========= 认证相关接口 ===========
+
 // Auth 登录认证，可选传入mac地址
-func (c *Connection) Auth(s string, mac ...string) error {
-	_, err := reCache.Get("blackToken", s)
+func (c *Connection) Auth(tokenStr string, mac ...string) error {
+	_, err := reCache.Get("blackToken", tokenStr)
 	if err == nil {
 		return errors.New("black token")
 	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	token, err := auth.CheckToken(s)
+	token, err := auth.CheckToken(tokenStr)
 	if err != nil {
 		return err
 	}
-	c.UserId = token.UserId
-	c.UserName = token.Username
-	c.UserPermission = token.Permission
-	c.AuthExpireTime = token.Expire
-	c.UserUuid = token.UserUUID
+	c.userId = token.UserId
+	c.userName = token.Username
+	c.userPermission = token.Permission
+	c.authExpireTime = token.Expire
+	c.userUuid = token.UserUUID
 	if len(mac) == 1 {
 		c.MacAddress = mac[0]
 	}
 	return nil
 }
+
+// AuthInfo 获取token副本
+func (c *Connection) AuthInfo() *auth.Token {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	t := auth.Token{
+		UserId:     c.userId,
+		Username:   c.userName,
+		UserUUID:   c.userUuid,
+		Permission: append([]string{}, c.userPermission...),
+		Data:       make(map[string]interface{}),
+		Expire:     c.authExpireTime,
+	}
+	return &t
+}
+
+// ===============================
 
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
@@ -355,7 +375,7 @@ func (c *Connection) Disconnect() {
 		// 主动取消生命周期上下文
 		c.cancel()
 		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("disconnect from %s, lifetime %s",
-			c.conn.RemoteAddr().String(), time.Now().Sub(c.connectTime).String()))
+			c.conn.RemoteAddr().String(), time.Since(c.connectTime).String()))
 	})
 }
 

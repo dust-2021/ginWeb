@@ -177,5 +177,3 @@ func (w *WContext) handle() {
 func NewWContext(conn *Connection, data *payload) *WContext {
 	return &WContext{Conn: conn, Request: data, attribute: make(map[string]interface{}), returnOnce: &sync.Once{}}
 }
-
-// ===================== 连接对象 ==================

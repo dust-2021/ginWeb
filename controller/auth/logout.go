@@ -4,8 +4,9 @@ import (
 	reCache "ginWeb/service/cache"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/auth"
-	"github.com/gin-gonic/gin"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type Logout struct {
@@ -18,7 +19,7 @@ func (receiver Logout) V1(c *gin.Context) {
 	// 拉黑该token
 	if f && ok {
 		sign, _ := token.Sign()
-		err := reCache.Set("blackToken", sign, 1, uint(token.Expire.Sub(time.Now()).Seconds()))
+		err := reCache.Set("blackToken", sign, 1, uint(time.Until(token.Expire).Seconds()))
 		if err != nil {
 
 			c.AbortWithStatusJSON(200, dataType.JsonWrong{
