@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"ginWeb/middleware"
 	"ginWeb/service/dataType"
@@ -16,20 +17,35 @@ import (
 type RoomController struct {
 }
 
+// 检查公钥长度是否为32位
+func checkEd25519KeyLength(key string) bool {
+	byteKey, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return false
+	}
+	return len(byteKey) == 32
+}
+
 // CreateRoom 创建房间
-// params: [config: subscribe.RoomConfig]
+// params: [config: subscribe.RoomConfig, publicKey: string]
 func (r RoomController) CreateRoom(w *wes.WContext) {
-	if len(w.Request.Params) == 0 {
-		w.Result(dataType.WrongBody, "room Create Failed without config")
+	if len(w.Request.Params) != 2 {
+		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
 	var conf subscribe.RoomConfig
+	var publicKey string
 	err := tools.ShouldBindJson(w.Request.Params[0], &conf)
 	if err != nil {
 		w.Result(dataType.WrongBody, err.Error())
 		return
 	}
-	room, err := subscribe.Roomer.NewRoom(w.Conn, &conf)
+	err = json.Unmarshal(w.Request.Params[1], &publicKey)
+	if err != nil || !checkEd25519KeyLength(publicKey) {
+		w.Result(dataType.WrongBody, "invalid public key")
+		return
+	}
+	room, err := subscribe.Roomer.NewRoom(w.Conn, &conf, publicKey)
 	if err != nil {
 		w.Result(dataType.Unknown, err.Error())
 		return
@@ -38,16 +54,22 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 }
 
 // GetInRoom 进入房间
-// params: [rooId: string, password?: string]
+// params: [rooId: string, publicKey: string, password?: string]
 func (r RoomController) GetInRoom(w *wes.WContext) {
-	if len(w.Request.Params) == 0 {
+	if len(w.Request.Params) <= 1 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
 	var roomId string
+	var publicKey string
 	err := json.Unmarshal(w.Request.Params[0], &roomId)
 	if err != nil {
 		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
+	err = json.Unmarshal(w.Request.Params[1], &publicKey)
+	if err != nil || !checkEd25519KeyLength(publicKey) {
+		w.Result(dataType.WrongBody, "invalided public key")
 		return
 	}
 	room, ok := subscribe.Roomer.Get(roomId)
@@ -56,9 +78,9 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		return
 	}
 	var password = ""
-	if len(w.Request.Params) > 1 {
+	if len(w.Request.Params) > 2 {
 		var p string
-		err := json.Unmarshal(w.Request.Params[1], &p)
+		err := json.Unmarshal(w.Request.Params[2], &p)
 		if err != nil || len(p) > 16 {
 			w.Result(dataType.WrongBody, "invalided password")
 			return
@@ -66,11 +88,11 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		password = p
 	}
 
-	if password != *room.Config.Password {
+	if room.Config.Password != nil && password != *room.Config.Password {
 		w.Result(dataType.DeniedByPermission, "invalid password")
 		return
 	}
-	err = room.Subscribe(w.Conn)
+	err = room.Subscribe(w.Conn, publicKey)
 	if err != nil {
 		w.Result(dataType.Unknown, "subscribe failed: "+err.Error())
 		return

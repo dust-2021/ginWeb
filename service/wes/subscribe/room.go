@@ -21,11 +21,12 @@ import (
 
 // MateInfo 接口返回的房间成员信息
 type MateInfo struct {
-	Name  string `json:"name"`
-	Id    int    `json:"id"`
-	Addr  string `json:"addr"`
-	Owner bool   `json:"owner"`
-	Vlan  int    `json:"vlan"`
+	Name      string `json:"name"`
+	Id        int    `json:"id"`
+	Addr      string `json:"addr"`
+	Owner     bool   `json:"owner"`
+	Vlan      int    `json:"vlan"`
+	PublicKey string `json:"publicKey"`
 }
 
 type RoomInfo struct {
@@ -41,7 +42,8 @@ type RoomInfo struct {
 }
 
 type mateAttr struct {
-	Vlan uint8
+	Vlan      uint8  // 分配的虚拟局域网网段号
+	PublicKey string // ed25519生成的32位公钥，用于vlan通信
 }
 
 // RoomConfig 房间设置
@@ -54,6 +56,7 @@ type RoomConfig struct {
 	UserIdBlackList []int64  `json:"UserIdBlackList"`                                      // id黑名单
 	DeviceBlackList []string `json:"deviceBlackList"`                                      // 设备黑名单
 	AutoClose       bool     `json:"autoClose"`                                            // 是否自动关闭
+
 }
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -72,7 +75,7 @@ type roomManager struct {
 	lock      sync.RWMutex
 }
 
-func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig) (*room, error) {
+func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ...any) (*room, error) {
 	roomName := uuid.New().String()
 	newRoom := &room{
 		uuid:      roomName,
@@ -87,7 +90,7 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig) (*room,
 	if err != nil {
 		return nil, err
 	}
-	newRoom.subs[owner] = mateAttr{Vlan: connVlan}
+	newRoom.subs[owner] = mateAttr{Vlan: connVlan, PublicKey: args[0].(string)}
 	owner.DoneHook("publish.room."+newRoom.uuid, func() {
 		info := owner.AuthInfo()
 		newRoom.lock.Lock()
@@ -232,11 +235,12 @@ func (r *room) Mates() []MateInfo {
 	for c, attr := range r.subs {
 		authInfo := c.AuthInfo()
 		resp = append(resp, MateInfo{
-			Name:  authInfo.Username,
-			Id:    int(authInfo.UserId),
-			Addr:  c.IP,
-			Owner: c == r.Owner,
-			Vlan:  int(attr.Vlan),
+			Name:      authInfo.Username,
+			Id:        int(authInfo.UserId),
+			Addr:      c.IP,
+			Owner:     c == r.Owner,
+			Vlan:      int(attr.Vlan),
+			PublicKey: attr.PublicKey,
 		})
 	}
 	return resp
@@ -285,7 +289,7 @@ func (r *room) closer() {
 }
 
 // Subscribe 订阅房间
-func (r *room) Subscribe(c *wes.Connection) error {
+func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if _, ok := r.subs[c]; ok {
@@ -322,11 +326,12 @@ func (r *room) Subscribe(c *wes.Connection) error {
 		r.deleteMember(c)
 	})
 	go r.Notice(MateInfo{
-		Id:    int(authInfo.UserId),
-		Name:  authInfo.Username,
-		Owner: false,
-		Addr:  c.IP,
-		Vlan:  int(connVlan),
+		Id:        int(authInfo.UserId),
+		Name:      authInfo.Username,
+		Owner:     false,
+		Addr:      c.IP,
+		Vlan:      int(connVlan),
+		PublicKey: args[0].(string),
 	}, "in", c)
 
 	return nil
@@ -360,7 +365,7 @@ func (r *room) deleteMember(c *wes.Connection) {
 }
 
 // UnSubscribe 退出房间
-func (r *room) UnSubscribe(c *wes.Connection) error {
+func (r *room) UnSubscribe(c *wes.Connection, args ...any) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 

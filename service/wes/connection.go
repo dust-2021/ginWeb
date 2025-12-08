@@ -204,7 +204,7 @@ func (c *Connection) listen() {
 		}
 		switch type_ {
 		case websocket.TextMessage:
-			if string(message) == "pong" {
+			if len(message) < 10 && string(message) == "pong" {
 				go c.checkInMessage(true, message)
 				continue
 			}

@@ -107,7 +107,7 @@ type Publisher struct {
 	taskId cron.EntryID
 }
 
-func (p *Publisher) Subscribe(c *wes.Connection) error {
+func (p *Publisher) Subscribe(c *wes.Connection, args ...any) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if _, ok := p.subscribers[c]; ok {
@@ -129,7 +129,7 @@ func (p *Publisher) Subscribe(c *wes.Connection) error {
 	return nil
 }
 
-func (p *Publisher) UnSubscribe(c *wes.Connection) error {
+func (p *Publisher) UnSubscribe(c *wes.Connection, args ...any) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
