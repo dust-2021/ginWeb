@@ -3,9 +3,10 @@ package loguru
 import (
 	"fmt"
 	"ginWeb/config"
-	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 var Logger *logrus.Logger
@@ -45,7 +46,7 @@ func init() {
 	if config.Conf.Server.Debug {
 		file = os.Stdout
 	} else {
-		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"server.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"/server.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		file = f
 		if err != nil {
 			panic(err)
@@ -61,7 +62,7 @@ func init() {
 	if config.Conf.Server.Debug {
 		DbLogger = Logger
 	} else {
-		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"db.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"/db.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			panic(err)
 		}

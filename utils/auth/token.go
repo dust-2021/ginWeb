@@ -35,6 +35,7 @@ func pkcs7UnPadding(data []byte) ([]byte, error) {
 
 // 将数据扩展至固定长度
 func pkcs7Padding(ciphertext []byte, blockSize int) []byte {
+	// 即使刚好整除也扩展blocksize的长度，否则解扩展无法判断
 	padding := blockSize - len(ciphertext)%blockSize
 	paddingText := bytes.Repeat([]byte{byte(padding)}, padding)
 	return append(ciphertext, paddingText...)
