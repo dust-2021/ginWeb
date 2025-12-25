@@ -6,11 +6,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/natefinch/lumberjack"
 	"github.com/sirupsen/logrus"
 )
 
-var Logger *logrus.Logger
-var DbLogger *logrus.Logger
+var Logger = &logrus.Logger{}
+var DbLogger = Logger
 
 const (
 	Panic = logrus.PanicLevel
@@ -42,37 +43,32 @@ func init() {
 	if !f {
 		level = 4
 	}
-	var file *os.File
 	if config.Conf.Server.Debug {
-		file = os.Stdout
+		Logger.SetOutput(os.Stdout)
 	} else {
-		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"/server.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		file = f
-		if err != nil {
-			panic(err)
-		}
+		Logger.SetOutput(&lumberjack.Logger{
+			Filename:   config.Conf.Server.Logger.Path + "/server.log",
+			MaxSize:    100,
+			MaxBackups: 10,
+			MaxAge:     30,
+			Compress:   true,
+			LocalTime:  true,
+		})
+		// db日志分流
+		DbLogger = &logrus.Logger{}
+		DbLogger.SetOutput(&lumberjack.Logger{
+			Filename:   config.Conf.Server.Logger.Path + "/db.log",
+			MaxSize:    100,
+			MaxBackups: 10,
+			MaxAge:     30,
+			Compress:   true,
+			LocalTime:  true,
+		})
+		DbLogger.SetLevel(logrus.Level(level))
+		DbLogger.SetFormatter(&myFormatter{})
 	}
-	Logger = &logrus.Logger{
-		Out:       file,
-		Formatter: &myFormatter{},
-		Hooks:     make(logrus.LevelHooks),
-		Level:     logrus.Level(level),
-	}
-	// 非调试下gorm日志放入不同文件
-	if config.Conf.Server.Debug {
-		DbLogger = Logger
-	} else {
-		f, err := os.OpenFile(config.Conf.Server.Logger.Path+"/db.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			panic(err)
-		}
-		DbLogger = &logrus.Logger{
-			Out:       f,
-			Formatter: &myFormatter{},
-			Hooks:     make(logrus.LevelHooks),
-			Level:     logrus.Level(level),
-		}
-	}
+	Logger.SetLevel(logrus.Level(level))
+	Logger.SetFormatter(&myFormatter{})
 	SimpleLog(Info, "SYSTEM", fmt.Sprintf("logrus configurate as %s", logrus.Level(level)))
 }
 

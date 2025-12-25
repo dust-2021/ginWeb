@@ -210,7 +210,6 @@ func (c *Connection) listen() {
 			}
 			go c.checkInMessage(false, message)
 		case websocket.BinaryMessage:
-			// TODO 音视频数据流
 			loguru.SimpleLog(loguru.Debug, "WS", "ignore binary message from: "+c.IP)
 			continue
 		case websocket.CloseMessage:
@@ -325,12 +324,12 @@ func (c *Connection) Auth(tokenStr string, mac ...string) error {
 	if err == nil {
 		return errors.New("black token")
 	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
 	token, err := auth.CheckToken(tokenStr)
 	if err != nil {
 		return err
 	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.userId = token.UserId
 	c.userName = token.Username
 	c.userPermission = token.Permission

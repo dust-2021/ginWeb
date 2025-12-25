@@ -22,6 +22,7 @@ import (
 // MateInfo 接口返回的房间成员信息
 type MateInfo struct {
 	Name      string `json:"name"`
+	Uuid      string `json:"uuid"`
 	Id        int    `json:"id"`
 	Addr      string `json:"addr"`
 	Owner     bool   `json:"owner"`
@@ -236,6 +237,7 @@ func (r *room) Mates() []MateInfo {
 		authInfo := c.AuthInfo()
 		resp = append(resp, MateInfo{
 			Name:      authInfo.Username,
+			Uuid:      authInfo.UserUUID,
 			Id:        int(authInfo.UserId),
 			Addr:      c.IP,
 			Owner:     c == r.Owner,
@@ -328,6 +330,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	go r.Notice(MateInfo{
 		Id:        int(authInfo.UserId),
 		Name:      authInfo.Username,
+		Uuid:      authInfo.UserUUID,
 		Owner:     false,
 		Addr:      c.IP,
 		Vlan:      int(connVlan),

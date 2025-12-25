@@ -17,6 +17,8 @@ func (b Base) ServerTime(w *wes.WContext) {
 	w.Result(dataType.Success, time.Now().UnixMilli())
 }
 
+// Auth ws认证
+// params: [token: string, mac?: string]
 func (b Base) Auth(w *wes.WContext) {
 	if len(w.Request.Params) < 1 {
 		w.Result(dataType.WrongBody, "wrong body")
@@ -53,8 +55,14 @@ func (b Base) Auth(w *wes.WContext) {
 	w.Result(dataType.Success, "auth success")
 }
 
+// ConnectUuid 获取当前连接UUID
+func (b Base) ConnectUuid(w *wes.WContext) {
+	w.Result(dataType.Success, w.Conn.Uuid)
+}
+
 func (b Base) RegisterWSRoute(r string, g *wes.Group) {
 	group := g.Group(r)
 	group.Register("time", b.ServerTime)
 	group.Register("auth", b.Auth)
+	group.Register("connectUuid", b.ConnectUuid)
 }
