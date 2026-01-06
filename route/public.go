@@ -28,6 +28,7 @@ func InitRoute(g *gin.Engine) {
 	sapi.Use(middleware.AuthMiddle.HttpHandle)
 	controller.Logout{}.RegisterRoute("/logout", sapi)
 	controller.FreshToken{}.RegisterRoute("/freshToken", sapi)
+	server.InfoMessage{}.RegisterRoute("/info", sapi)
 
 	// 系统api组
 	systemApi := sapi.Group("/system")

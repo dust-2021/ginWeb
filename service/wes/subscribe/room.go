@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
+	"ginWeb/service/wireguard"
 	"ginWeb/utils/loguru"
 	"slices"
 	"sync"
@@ -43,7 +44,7 @@ type RoomInfo struct {
 }
 
 type mateAttr struct {
-	Vlan      uint8  // 分配的虚拟局域网网段号
+	Vlan      uint16 // 分配的虚拟局域网网段号
 	PublicKey string // ed25519生成的32位公钥，用于vlan通信
 }
 
@@ -79,21 +80,20 @@ type roomManager struct {
 func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ...any) (*room, error) {
 	roomName := uuid.New().String()
 	newRoom := &room{
-		uuid:      roomName,
-		subs:      make(map[*wes.Connection]mateAttr),
-		Owner:     owner,
-		lock:      sync.RWMutex{},
-		Config:    config,
-		vlan:      make(chan uint8, 254),
-		vlanYield: 1,
+		uuid:   roomName,
+		subs:   make(map[*wes.Connection]mateAttr),
+		Owner:  owner,
+		lock:   sync.RWMutex{},
+		Config: config,
 	}
-	connVlan, err := newRoom.yieldVlan()
+	connVlan, err := wireguard.WireguardManager.AddPeer(owner.Uuid, args[0].(string))
 	if err != nil {
 		return nil, err
 	}
 	newRoom.subs[owner] = mateAttr{Vlan: connVlan, PublicKey: args[0].(string)}
 	owner.DoneHook("publish.room."+newRoom.uuid, func() {
 		info := owner.AuthInfo()
+		wireguard.WireguardManager.RemovePeer(owner.Uuid)
 		newRoom.lock.Lock()
 		defer newRoom.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
@@ -210,9 +210,6 @@ type room struct {
 
 	lifetimeCtx context.Context
 	lifetimeEnd context.CancelFunc
-
-	vlan      chan uint8 // 回收的网段分配
-	vlanYield uint8      //生成网段分配
 }
 
 func (r *room) UUID() string {
@@ -246,22 +243,6 @@ func (r *room) Mates() []MateInfo {
 		})
 	}
 	return resp
-}
-
-// 获取分配的IP段，已分配完时等待回收
-func (r *room) yieldVlan() (vlan uint8, err error) {
-	if r.vlanYield < 255 {
-		vlan = r.vlanYield
-		r.vlanYield++
-		return
-	}
-	select {
-	case vlan = <-r.vlan:
-		return
-	case <-time.After(time.Second * 5):
-		err = errors.New("vlanYield timeout")
-		return 0, err
-	}
 }
 
 // 生命周期管理，维持一个计时器，自动关闭设置开启时生效，publish方法被调用后刷新计时器
@@ -312,7 +293,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 			return errors.New("black user id")
 		}
 	}
-	connVlan, err := r.yieldVlan()
+	connVlan, err := wireguard.WireguardManager.AddPeer(authInfo.UserUUID, args[0].(string))
 	if err != nil {
 		return err
 	}
@@ -320,6 +301,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room %s", authInfo.UserId, r.uuid))
 	// 将退出房间添加打ws连接关闭钩子中
 	c.DoneHook("publish.room."+r.uuid, func() {
+		wireguard.WireguardManager.RemovePeer(authInfo.UserUUID)
 		r.lock.Lock()
 		defer r.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room %s by done hook",
@@ -342,8 +324,6 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 
 // 删除成员并检测房间成员数量和房主转移
 func (r *room) deleteMember(c *wes.Connection) {
-	// 回收分配的IP网段
-	r.vlan <- r.subs[c].Vlan
 	delete(r.subs, c)
 	// 全部退出后关闭room
 	if len(r.subs) == 0 {

@@ -39,6 +39,14 @@ func InitializeMode() {
 		RoleName:    "admin",
 		Description: "系统管理员",
 	}
+	userRole := authMode.UserRole{
+		BaseModel: model.BaseModel{
+			Id: 1,
+		},
+		RoleId: 1,
+		UserId: 1,
+	}
+
 	perm := authMode.Permissions{
 		BaseModel: model.BaseModel{
 			Id: 1,
@@ -46,12 +54,21 @@ func InitializeMode() {
 		PermissionName: "admin",
 		Description:    "管理员权限",
 	}
+	rolePerm := authMode.RolePermission{
+		BaseModel: model.BaseModel{
+			Id: 1,
+		},
+		RoleId:       1,
+		PermissionId: 1,
+	}
 	resp := db.Create(&user)
 	if resp.Error != nil {
 		loguru.SimpleLog(loguru.Warn, "SYSTEM", fmt.Sprintf("init admin user failed %s", resp.Error.Error()))
 	}
 	resp = db.Create(&role)
-	if resp.Error != nil {
+	resp2 := db.Create(&userRole)
+	resp3 := db.Create(&rolePerm)
+	if resp.Error != nil || resp2.Error != nil || resp3.Error != nil {
 		loguru.SimpleLog(loguru.Warn, "SYSTEM", fmt.Sprintf("init admin role failed %s", resp.Error.Error()))
 	}
 	resp = db.Create(&perm)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
+	"ginWeb/service/wireguard"
 	"ginWeb/utils/database"
 	"time"
 )
@@ -60,9 +61,14 @@ func (b Base) ConnectUuid(w *wes.WContext) {
 	w.Result(dataType.Success, w.Conn.Uuid)
 }
 
+func (b Base) ServerPublicKey(w *wes.WContext) {
+	w.Result(dataType.Success, wireguard.WireguardManager.GetPublicKey())
+}
+
 func (b Base) RegisterWSRoute(r string, g *wes.Group) {
 	group := g.Group(r)
 	group.Register("time", b.ServerTime)
 	group.Register("auth", b.Auth)
 	group.Register("connectUuid", b.ConnectUuid)
+	group.Register("serverPublicKey", b.ServerPublicKey)
 }

@@ -6,6 +6,7 @@ import (
 	"ginWeb/model/inital"
 	"ginWeb/service/scheduler"
 	"ginWeb/service/udp"
+	"ginWeb/service/wireguard"
 	"ginWeb/utils/loguru"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -52,9 +53,16 @@ func main() {
 			log.Println(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Conf.Server.PprofPort), nil))
 		}()
 	}
-	_ = udp.Handler.Run()
 	g := application()
 	// 启动定时器
 	scheduler.App.Start()
+	err := wireguard.WireguardManager.Start()
+	if err != nil {
+		panic(fmt.Sprintf("start wireguard failed: %s", err.Error()))
+	}
+	err = udp.UdpSvr.Run()
+	if err != nil {
+		panic(fmt.Sprintf("start udp server failed: %s", err.Error()))
+	}
 	_ = g.Run(fmt.Sprintf(":%d", config.Conf.Server.Port))
 }
