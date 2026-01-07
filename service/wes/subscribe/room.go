@@ -86,14 +86,15 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ..
 		lock:   sync.RWMutex{},
 		Config: config,
 	}
-	connVlan, err := wireguard.WireguardManager.AddPeer(owner.Uuid, args[0].(string))
+	connVlan, err := wireguard.WireguardManager.AddPeer(roomName, owner.Uuid, args[0].(string))
 	if err != nil {
 		return nil, err
 	}
 	newRoom.subs[owner] = mateAttr{Vlan: connVlan, PublicKey: args[0].(string)}
+	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	owner.DoneHook("publish.room."+newRoom.uuid, func() {
 		info := owner.AuthInfo()
-		wireguard.WireguardManager.RemovePeer(owner.Uuid)
+		wireguard.WireguardManager.RemovePeer(newRoom.uuid, owner.Uuid)
 		newRoom.lock.Lock()
 		defer newRoom.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
@@ -293,15 +294,15 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 			return errors.New("black user id")
 		}
 	}
-	connVlan, err := wireguard.WireguardManager.AddPeer(authInfo.UserUUID, args[0].(string))
+	connVlan, err := wireguard.WireguardManager.AddPeer(r.uuid, c.Uuid, args[0].(string))
 	if err != nil {
 		return err
 	}
 	r.subs[c] = mateAttr{Vlan: connVlan}
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room %s", authInfo.UserId, r.uuid))
-	// 将退出房间添加打ws连接关闭钩子中
+	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	c.DoneHook("publish.room."+r.uuid, func() {
-		wireguard.WireguardManager.RemovePeer(authInfo.UserUUID)
+		wireguard.WireguardManager.RemovePeer(r.uuid, c.Uuid)
 		r.lock.Lock()
 		defer r.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room %s by done hook",
@@ -358,6 +359,8 @@ func (r *room) UnSubscribe(c *wes.Connection, args ...any) error {
 	authInfo := c.AuthInfo()
 	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %s", authInfo.UserId, r.uuid))
 	r.deleteMember(c)
+	// wireguard中删除peer
+	wireguard.WireguardManager.RemovePeer(r.uuid, c.Uuid)
 	c.DeleteDoneHook("publish.room." + r.uuid)
 	return nil
 }
