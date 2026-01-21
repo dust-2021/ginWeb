@@ -2,6 +2,7 @@ package route
 
 import (
 	"ginWeb/config"
+	"ginWeb/controller/debug"
 	"ginWeb/controller/perm"
 	"ginWeb/controller/server"
 	"ginWeb/controller/user"
@@ -36,6 +37,10 @@ func InitRoute(g *gin.Engine) {
 	user.Users{}.RegisterRoute("/user", systemApi)
 	perm.Permission{}.RegisterRoute("/permission", systemApi)
 
+	if config.Conf.Server.Debug {
+		debugGroup := g.Group("/debug")
+		debug.WgDebug{}.RegisterRoute("/wg", debugGroup)
+	}
 }
 
 // InitWs 注册ws处理逻辑

@@ -47,8 +47,9 @@ var ConnManager = &connManager{
 }
 
 type connManager struct {
-	lock  *sync.RWMutex
-	conns map[string]*Connection
+	lock        *sync.RWMutex
+	conns       map[string]*Connection
+	userConnMap map[string]string
 }
 
 func (m *connManager) New(conn *websocket.Conn) *Connection {
@@ -67,16 +68,23 @@ func (m *connManager) New(conn *websocket.Conn) *Connection {
 		userPermission: make([]string, 0),
 		disconnectOnce: sync.Once{},
 
-		doneHooks:  make(map[string]func()),
-		hookChain:  make([]string, 0),
-		doHookOnce: sync.Once{},
+		doneHooks: make(map[string]func()),
+		hookChain: make([]string, 0),
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
+	// 开启连接的监听和处理函数
+	go c.listen()
+	go c.handle()
+	c.heartbeat()
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.conns[c.Uuid] = c
 	c.DoneHook("-", func() {
-		m.Del(c.Uuid)
+		m.lock.Lock()
+		defer m.lock.Unlock()
+		delete(m.conns, c.Uuid)
+		userUuid := c.AuthInfo().UserUUID
+		delete(m.userConnMap, userUuid)
 	})
 	return c
 }
@@ -88,16 +96,25 @@ func (m *connManager) Get(id string) (*Connection, bool) {
 	return c, ok
 }
 
-func (m *connManager) Del(id string) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	delete(m.conns, id)
-}
-
+// 存在的连接数
 func (m *connManager) Count() int {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 	return len(m.conns)
+}
+
+// 设置userUuid和连接id的对应关系，已存在则断开旧连接
+func (m *connManager) userConn(userUuid string, connId string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if _, f := m.userConnMap[userUuid]; !f {
+		return
+	}
+	c, f := m.conns[connId]
+	if f {
+		// 锁内异步执行
+		go c.Disconnect()
+	}
 }
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -129,8 +146,7 @@ type Connection struct {
 	// 断开连接时的钩子任务
 	doneHooks map[string]func()
 	// 保证钩子函数执行顺序的顺序列表
-	hookChain  []string
-	doHookOnce sync.Once
+	hookChain []string
 }
 
 // Done 连接生命周期
@@ -240,6 +256,7 @@ func (c *Connection) handle() {
 		case msg := <-c.msgChan:
 			// 单个请求的处理
 			ctx := NewWContext(c, msg)
+			// TODO 考虑使用公共协程池
 			go ctx.handle()
 
 		}
@@ -284,7 +301,7 @@ func (c *Connection) heartbeat() {
 	}()
 }
 
-// DoneHook 添加断开连接钩子函数，hook是有序的，先进后出原则
+// DoneHook 添加断开连接钩子函数，hook是有序的，先进后出原则，不可以在钩子函数中调用Disconnect
 func (c *Connection) DoneHook(key string, f func()) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -309,19 +326,6 @@ func (c *Connection) DeleteDoneHook(key string) {
 	}
 }
 
-// 执行所有断联钩子函数，once保证单次执行
-func (c *Connection) doHook() {
-	c.doHookOnce.Do(func() {
-		for i := len(c.hookChain) - 1; i >= 0; i-- {
-			f, ok := c.doneHooks[c.hookChain[i]]
-			if !ok {
-				continue
-			}
-			f()
-		}
-	})
-}
-
 // ========= 认证相关接口 ===========
 
 // Auth 登录认证，可选传入mac地址
@@ -344,6 +348,7 @@ func (c *Connection) Auth(tokenStr string, mac ...string) error {
 	if len(mac) == 1 {
 		c.MacAddress = mac[0]
 	}
+	go ConnManager.userConn(token.UserUUID, c.Uuid)
 	return nil
 }
 
@@ -367,7 +372,14 @@ func (c *Connection) AuthInfo() *auth.Token {
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
 	c.disconnectOnce.Do(func() {
-		c.doHook()
+		// 执行所有钩子函数后再加锁执行连接的清理工作
+		for i := len(c.hookChain) - 1; i >= 0; i-- {
+			f, ok := c.doneHooks[c.hookChain[i]]
+			if !ok {
+				continue
+			}
+			f()
+		}
 		c.lock.Lock()
 		defer c.lock.Unlock()
 
@@ -404,8 +416,5 @@ func UpgradeConn(c *gin.Context) {
 		connect.Disconnect()
 		return nil
 	})
-	// 开启连接的监听和处理函数
-	go connect.listen()
-	go connect.handle()
-	connect.heartbeat()
+
 }

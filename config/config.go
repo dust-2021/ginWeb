@@ -14,6 +14,7 @@ type Config struct {
 		UdpPort      uint16 `yaml:"udpPort"`      // udp端口
 		PprofPort    uint16 `yaml:"pprofPort"`    // pprof端口
 		TurnPort     uint16 `yaml:"turnPort"`     // turn端口
+		Vlan         [2]int `yaml:"vlan"`         // wireguard虚拟局域网
 		Secret       string `yaml:"secret"`       // 加密密钥
 		Debug        bool   `yaml:"debug"`        //
 		TokenEncrypt bool   `yaml:"tokenEncrypt"` // token是加密或签名

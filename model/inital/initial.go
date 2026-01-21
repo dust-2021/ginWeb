@@ -9,6 +9,8 @@ import (
 	"ginWeb/utils/auth"
 	"ginWeb/utils/database"
 	"ginWeb/utils/loguru"
+
+	"github.com/google/uuid"
 )
 
 // InitializeMode 初始化数据表，创建管理员账号和权限
@@ -27,6 +29,7 @@ func InitializeMode() {
 		BaseModel: model.BaseModel{
 			Id: 1,
 		},
+		Uuid:         uuid.NewString(),
 		Username:     config.Conf.Server.AdminUser.Username,
 		Phone:        config.Conf.Server.AdminUser.Phone,
 		Email:        config.Conf.Server.AdminUser.Email,

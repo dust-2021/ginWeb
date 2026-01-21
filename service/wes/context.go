@@ -175,5 +175,5 @@ func (w *WContext) handle() {
 
 // NewWContext 创建ws上下文
 func NewWContext(conn *Connection, data *payload) *WContext {
-	return &WContext{Conn: conn, Request: data, attribute: make(map[string]interface{}), returnOnce: &sync.Once{}}
+	return &WContext{Conn: conn, Request: data, attribute: make(map[string]any), returnOnce: &sync.Once{}}
 }

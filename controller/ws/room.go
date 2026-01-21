@@ -50,7 +50,11 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 		w.Result(dataType.Unknown, err.Error())
 		return
 	}
-	w.Result(dataType.Success, room.UUID())
+	type respData struct {
+		RoomId string               `json:"roomId"`
+		Mates  []subscribe.MateInfo `json:"mates"`
+	}
+	w.Result(dataType.Success, respData{RoomId: room.UUID(), Mates: room.Mates()})
 }
 
 // GetInRoom 进入房间
@@ -97,7 +101,7 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		w.Result(dataType.Unknown, "subscribe failed: "+err.Error())
 		return
 	}
-	w.Result(dataType.Success, "success")
+	w.Result(dataType.Success, room.Mates())
 }
 
 // GetOutRoom 退出房间

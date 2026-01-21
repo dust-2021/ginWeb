@@ -1,22 +1,28 @@
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519
-import base64
+import nacl.bindings
+import nacl.utils
 
-# 生成ED25519密钥对
-private_key = ed25519.Ed25519PrivateKey.generate()
-public_key = private_key.public_key()
+def generate_curve25519_keypair():
+    """
+    生成 Curve25519 密钥对
+    
+    Returns:
+        tuple: (private_key, public_key) 各32字节
+    """
+    # 生成私钥（32字节随机数）
+    private_key = nacl.utils.random(nacl.bindings.crypto_box_SECRETKEYBYTES)
+    
+    # 从私钥计算公钥
+    public_key = nacl.bindings.crypto_scalarmult_base(private_key)
+    
+    return private_key, public_key
 
-# 获取原始32字节密钥
-private_bytes = private_key.private_bytes(
-    encoding=serialization.Encoding.Raw,
-    format=serialization.PrivateFormat.Raw,
-    encryption_algorithm=serialization.NoEncryption()
-)
+# 使用示例
+private_key, public_key = generate_curve25519_keypair()
 
-public_bytes = public_key.public_bytes(
-    encoding=serialization.Encoding.Raw,
-    format=serialization.PublicFormat.Raw
-)
+print(f"私钥 ({len(private_key)} 字节): {private_key.hex()}")
+print(f"公钥 ({len(public_key)} 字节): {public_key.hex()}")
 
-print(base64.b64encode(public_bytes).decode('ascii'), list(public_bytes))
-print(base64.b64encode(private_bytes).decode('ascii'), list(private_bytes))
+# 验证长度
+assert len(private_key) == 32, "私钥必须是32字节"
+assert len(public_key) == 32, "公钥必须是32字节"
+

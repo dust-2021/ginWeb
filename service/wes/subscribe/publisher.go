@@ -78,6 +78,7 @@ func (p *pubManager) DelPub(n string) {
 type publisherResp struct {
 	SenderId   int64       `json:"senderId"`
 	SenderName string      `json:"senderName"`
+	SenderUuid string      `json:"senderUuid"`
 	Timestamp  int64       `json:"timestamp"`
 	Data       interface{} `json:"data"`
 }
@@ -143,10 +144,12 @@ func (p *Publisher) UnSubscribe(c *wes.Connection, args ...any) error {
 func (p *Publisher) Message(v string, sender *wes.Connection) {
 	var id int64
 	var name string
+	var uuid string
 	if sender != nil {
 		temp := sender.AuthInfo()
 		id = temp.UserId
 		name = temp.Username
+		uuid = temp.UserUUID
 	}
 	var r = wes.Resp{
 		Id:         "publish." + p.Name,
@@ -155,6 +158,7 @@ func (p *Publisher) Message(v string, sender *wes.Connection) {
 		Data: publisherResp{
 			SenderId:   id,
 			SenderName: name,
+			SenderUuid: uuid,
 			Timestamp:  time.Now().UnixMilli(),
 			Data:       v,
 		},

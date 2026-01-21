@@ -80,11 +80,12 @@ type roomManager struct {
 func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ...any) (*room, error) {
 	roomName := uuid.New().String()
 	newRoom := &room{
-		uuid:   roomName,
-		subs:   make(map[*wes.Connection]mateAttr),
-		Owner:  owner,
-		lock:   sync.RWMutex{},
-		Config: config,
+		uuid:      roomName,
+		subs:      make(map[*wes.Connection]mateAttr),
+		Owner:     owner,
+		lock:      sync.RWMutex{},
+		Config:    config,
+		forbidden: true,
 	}
 	connVlan, err := wireguard.WireguardManager.AddPeer(roomName, owner.Uuid, args[0].(string))
 	if err != nil {
@@ -331,17 +332,17 @@ func (r *room) deleteMember(c *wes.Connection) {
 		r.shutdownFree()
 	}
 	info := c.AuthInfo()
-	go r.Notice(info.UserId, "out", c)
+	go r.Notice(info.UserUUID, "out", c)
 	if c == r.Owner {
 		// 推举下一个房主
 		for ele := range r.subs {
 			r.Owner = ele
 			go func() {
 				type temp struct {
-					Old int `json:"old"`
-					New int `json:"new"`
+					Old string `json:"old"`
+					New string `json:"new"`
 				}
-				r.Notice(temp{Old: int(info.UserId), New: int(r.Owner.AuthInfo().UserId)}, "exchangeOwner", nil)
+				r.Notice(temp{Old: info.UserUUID, New: r.Owner.AuthInfo().UserUUID}, "exchangeOwner", nil)
 			}()
 			break
 		}
@@ -402,6 +403,7 @@ func (r *room) Message(msg string, sender *wes.Connection) {
 		Data: publisherResp{
 			SenderId:   senderInfo.UserId,
 			SenderName: senderInfo.Username,
+			SenderUuid: senderInfo.UserUUID,
 			Timestamp:  time.Now().UnixMilli(),
 			Data:       msg,
 		},
