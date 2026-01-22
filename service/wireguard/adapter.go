@@ -3,6 +3,7 @@ package wireguard
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -26,10 +27,17 @@ type adapter struct {
 }
 
 type peer struct {
-	RoomID    string
-	PublicKey [device.NoisePublicKeySize]byte
-	Vlan      uint16
-	WgPeer    *device.Peer
+	RoomID       string
+	PublicKey    [device.NoisePublicKeySize]byte
+	Vlan         uint16
+	WgPeer       *device.Peer
+	updateIPOnce *sync.Once
+}
+
+func (p *peer) UpdateIPBroadcast() {
+	p.updateIPOnce.Do(func() {
+
+	})
 }
 
 // 适配器管理
@@ -46,8 +54,8 @@ func (am *adapterManager) PeersCount() int {
 }
 
 func (am *adapterManager) config() string {
-	return fmt.Sprintf("private_key=%x\r\nlisten_port=%d\r\nreplace_peers=true",
-		am.wgInterface.privateKey, am.wgInterface.listenPort)
+	return fmt.Sprintf("private_key=%s\nlisten_port=%d\nreplace_peers=true",
+		hex.EncodeToString(am.wgInterface.privateKey), am.wgInterface.listenPort)
 }
 
 // base64编码公钥
@@ -64,6 +72,8 @@ func (am *adapterManager) Start() (err error) {
 	if err != nil {
 		return fmt.Errorf("set wireguard interface failed-%s", err.Error())
 	}
+	check, _ := server.Device.IpcGet()
+	loguru.SimpleLog(loguru.Debug, "WG", fmt.Sprintf("wg set as %s ,wg run as %s", am.config(), check))
 	return server.Device.Up()
 }
 
@@ -151,7 +161,12 @@ func (am *adapterManager) RemovePeer(roomId string, uname string) {
 }
 
 func (am *adapterManager) GetIpcConfig() (string, error) {
-	return server.Device.IpcGet()
+	ipcString, err := server.Device.IpcGet()
+	if err != nil {
+		return "", err
+	}
+	result := fmt.Sprintf("pri=%s\npub=%s\nipc:%s", hex.EncodeToString(am.wgInterface.privateKey), hex.EncodeToString(am.wgInterface.publicKey), ipcString)
+	return result, nil
 }
 
 func init() {
@@ -170,8 +185,8 @@ func init() {
 		lock:  &sync.RWMutex{},
 		peers: make(map[string]map[string]*peer),
 		wgInterface: adapter{
-			publicKey:  privateKey[:],
-			privateKey: publicKey,
+			publicKey:  publicKey,
+			privateKey: privateKey[:],
 			listenPort: config.Conf.Server.UdpPort,
 		},
 		vlanID:      1,
