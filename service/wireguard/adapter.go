@@ -12,8 +12,6 @@ import (
 
 	"ginWeb/config"
 	"ginWeb/utils/loguru"
-
-	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 )
 
@@ -27,24 +25,16 @@ type adapter struct {
 }
 
 type peer struct {
-	RoomID       string
-	PublicKey    [device.NoisePublicKeySize]byte
-	Vlan         uint16
-	WgPeer       *device.Peer
-	updateIPOnce *sync.Once
-}
-
-func (p *peer) UpdateIPBroadcast() {
-	p.updateIPOnce.Do(func() {
-
-	})
+	PublicKey [device.NoisePublicKeySize]byte
+	Vlan      uint16
+	WgPeer    *device.Peer
 }
 
 // 适配器管理
 type adapterManager struct {
 	lock        *sync.RWMutex
 	wgInterface adapter
-	peers       map[string]map[string]*peer
+	peers       map[string]*peer
 	vlanID      uint16
 	vlanRecover chan uint16
 }
@@ -72,8 +62,6 @@ func (am *adapterManager) Start() (err error) {
 	if err != nil {
 		return fmt.Errorf("set wireguard interface failed-%s", err.Error())
 	}
-	check, _ := server.Device.IpcGet()
-	loguru.SimpleLog(loguru.Debug, "WG", fmt.Sprintf("wg set as %s ,wg run as %s", am.config(), check))
 	return server.Device.Up()
 }
 
@@ -101,8 +89,8 @@ func (am *adapterManager) Close() error {
 	return nil
 }
 
-// 添加局域网成员
-func (am *adapterManager) AddPeer(roomID string, uname string, publicKey string) (vlan uint16, err error) {
+// 添加局域网成员 uid: ws连接唯一标识，hook: peer对端地址改变后的回调函数，传入uid和新地址
+func (am *adapterManager) AddPeer(uid string, publicKey string, hook func(uid string, ip string, port int)) (vlan uint16, err error) {
 
 	pubKey, err := base64.StdEncoding.DecodeString(publicKey)
 	if err != nil || len(pubKey) != device.NoisePublicKeySize {
@@ -115,16 +103,13 @@ func (am *adapterManager) AddPeer(roomID string, uname string, publicKey string)
 		return 0, err
 	}
 	vlan_ip_string := fmt.Sprintf("%d.%d.%d.%d/32", config.Conf.Server.Vlan[0], config.Conf.Server.Vlan[1], vlan_ip>>8, vlan_ip&0xff)
-	wgPeer, err := server.Device.NewPeerFix(pubByte, vlan_ip_string, func(ip conn.Endpoint) {
-		loguru.SimpleLog(loguru.Debug, "WG", fmt.Sprintf("peer %s is now at %s", uname, ip.DstToString()))
-	})
+	wgPeer, err := server.Device.NewPeerFix(uid, pubByte, vlan_ip_string, hook)
 	if err != nil {
 		// 回收vlan地址
 		am.vlanRecover <- vlan_ip
 		return 0, err
 	}
 	curPeer := &peer{
-		RoomID:    roomID,
 		PublicKey: pubByte,
 		Vlan:      vlan_ip,
 		WgPeer:    wgPeer,
@@ -132,32 +117,22 @@ func (am *adapterManager) AddPeer(roomID string, uname string, publicKey string)
 
 	am.lock.Lock()
 	defer am.lock.Unlock()
-	if _, ok := am.peers[roomID]; !ok {
-		am.peers[roomID] = make(map[string]*peer)
-	}
-
-	am.peers[roomID][uname] = curPeer
-	loguru.SimpleLog(loguru.Info, "WG", fmt.Sprintf("add peer %s to room %s with vlan %s", uname, roomID, vlan_ip_string))
+	am.peers[uid] = curPeer
+	loguru.SimpleLog(loguru.Info, "WG", fmt.Sprintf("add peer %s with vlan %s", uid, vlan_ip_string))
 	return vlan_ip, nil
 }
 
 // 删除对等体并回收分发的网段IP
-func (am *adapterManager) RemovePeer(roomId string, uname string) {
+func (am *adapterManager) RemovePeer(uname string) {
 	am.lock.Lock()
 	defer am.lock.Unlock()
-	if _, ok := am.peers[roomId]; !ok {
+	if _, ok := am.peers[uname]; !ok {
 		return
 	}
-	if _, ok := am.peers[roomId][uname]; !ok {
-		return
-	}
-	server.Device.RemovePeer(am.peers[roomId][uname].PublicKey)
-	am.vlanRecover <- am.peers[roomId][uname].Vlan
-	loguru.SimpleLog(loguru.Info, "WG", fmt.Sprintf("remove peer %s from room %s with vlan %d", uname, roomId, am.peers[roomId][uname].Vlan))
-	delete(am.peers[roomId], uname)
-	if length := len(am.peers[roomId]); length == 0 {
-		delete(am.peers, roomId)
-	}
+	server.Device.RemovePeer(am.peers[uname].PublicKey)
+	am.vlanRecover <- am.peers[uname].Vlan
+	loguru.SimpleLog(loguru.Info, "WG", fmt.Sprintf("remove peer %s with vlan %d", uname, am.peers[uname].Vlan))
+	delete(am.peers, uname)
 }
 
 func (am *adapterManager) GetIpcConfig() (string, error) {
@@ -183,7 +158,7 @@ func init() {
 	publicKey, err := curve25519.X25519(privateKey[:], curve25519.Basepoint)
 	WireguardManager = &adapterManager{
 		lock:  &sync.RWMutex{},
-		peers: make(map[string]map[string]*peer),
+		peers: make(map[string]*peer),
 		wgInterface: adapter{
 			publicKey:  publicKey,
 			privateKey: privateKey[:],

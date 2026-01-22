@@ -25,12 +25,12 @@ type MateInfo struct {
 	Name      string `json:"name"`
 	Uuid      string `json:"uuid"`
 	Id        int    `json:"id"`
-	Addr      string `json:"addr"`
 	Owner     bool   `json:"owner"`
 	Vlan      int    `json:"vlan"`
 	PublicKey string `json:"publicKey"`
 }
 
+// 用于接收创建房间数据
 type RoomInfo struct {
 	RoomID       string `json:"roomId"`
 	RoomTitle    string `json:"roomTitle"`
@@ -43,9 +43,18 @@ type RoomInfo struct {
 	Forbidden    bool   `json:"forbidden"`
 }
 
+// notice通知返回的成员地址变动信息
+type NoticeUpdateEndpoint struct {
+	Uuid string `json:"uuid"`
+	Ip   string `json:"ip"`
+	Port int    `json:"port"`
+}
+
 type mateAttr struct {
 	Vlan      uint16 // 分配的虚拟局域网网段号
 	PublicKey string // ed25519生成的32位公钥，用于vlan通信
+	WgIP      string // 成员真实wg外网ip
+	WgPort    int    // 成员真实wg外网端口
 }
 
 // RoomConfig 房间设置
@@ -87,7 +96,7 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ..
 		Config:    config,
 		forbidden: true,
 	}
-	connVlan, err := wireguard.WireguardManager.AddPeer(roomName, owner.Uuid, args[0].(string))
+	connVlan, err := wireguard.WireguardManager.AddPeer(owner.Uuid, args[0].(string), newRoom.UpdateTrueAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +104,7 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ..
 	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	owner.DoneHook("publish.room."+newRoom.uuid, func() {
 		info := owner.AuthInfo()
-		wireguard.WireguardManager.RemovePeer(newRoom.uuid, owner.Uuid)
+		wireguard.WireguardManager.RemovePeer(owner.Uuid)
 		newRoom.lock.Lock()
 		defer newRoom.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
@@ -238,7 +247,6 @@ func (r *room) Mates() []MateInfo {
 			Name:      authInfo.Username,
 			Uuid:      authInfo.UserUUID,
 			Id:        int(authInfo.UserId),
-			Addr:      c.IP,
 			Owner:     c == r.Owner,
 			Vlan:      int(attr.Vlan),
 			PublicKey: attr.PublicKey,
@@ -273,6 +281,28 @@ func (r *room) closer() {
 	}
 }
 
+// 用于wg更新peer真实地址的钩子函数
+func (r *room) UpdateTrueAddr(uid string, ip string, port int) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	for c := range r.subs {
+		if c.Uuid != uid {
+			continue
+		}
+		if r.subs[c].WgIP == ip && r.subs[c].WgPort == port {
+			return
+		}
+		info := r.subs[c]
+		info.WgIP = ip
+		info.WgPort = port
+		r.subs[c] = info
+		loguru.SimpleLog(loguru.Debug, "ROOM", fmt.Sprintf("peer wg address update to %s:%d", ip, port))
+		go r.Notice(NoticeUpdateEndpoint{Uuid: c.AuthInfo().UserUUID, Ip: ip, Port: port}, "updatePeerEndpoint", c)
+		return
+	}
+
+}
+
 // Subscribe 订阅房间
 func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	r.lock.Lock()
@@ -295,7 +325,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 			return errors.New("black user id")
 		}
 	}
-	connVlan, err := wireguard.WireguardManager.AddPeer(r.uuid, c.Uuid, args[0].(string))
+	connVlan, err := wireguard.WireguardManager.AddPeer(c.Uuid, args[0].(string), r.UpdateTrueAddr)
 	if err != nil {
 		return err
 	}
@@ -303,7 +333,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room %s", authInfo.UserId, r.uuid))
 	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	c.DoneHook("publish.room."+r.uuid, func() {
-		wireguard.WireguardManager.RemovePeer(r.uuid, c.Uuid)
+		wireguard.WireguardManager.RemovePeer(c.Uuid)
 		r.lock.Lock()
 		defer r.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room %s by done hook",
@@ -316,7 +346,6 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 		Name:      authInfo.Username,
 		Uuid:      authInfo.UserUUID,
 		Owner:     false,
-		Addr:      c.IP,
 		Vlan:      int(connVlan),
 		PublicKey: args[0].(string),
 	}, "in", c)
@@ -361,7 +390,7 @@ func (r *room) UnSubscribe(c *wes.Connection, args ...any) error {
 	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %s", authInfo.UserId, r.uuid))
 	r.deleteMember(c)
 	// wireguard中删除peer
-	wireguard.WireguardManager.RemovePeer(r.uuid, c.Uuid)
+	wireguard.WireguardManager.RemovePeer(c.Uuid)
 	c.DeleteDoneHook("publish.room." + r.uuid)
 	return nil
 }
