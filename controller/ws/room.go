@@ -27,9 +27,9 @@ func checkEd25519KeyLength(key string) bool {
 }
 
 // CreateRoom 创建房间
-// params: [config: subscribe.RoomConfig, publicKey: string]
+// params: [config: subscribe.RoomConfig, publicKey: string, udpPort: int]
 func (r RoomController) CreateRoom(w *wes.WContext) {
-	if len(w.Request.Params) != 2 {
+	if len(w.Request.Params) != 3 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
@@ -45,7 +45,13 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 		w.Result(dataType.WrongBody, "invalid public key")
 		return
 	}
-	room, err := subscribe.Roomer.NewRoom(w.Conn, &conf, publicKey)
+	var udpPort int
+	err = json.Unmarshal(w.Request.Params[2], &udpPort)
+	if err != nil || udpPort <= 0 || udpPort > 65535 {
+		w.Result(dataType.WrongBody, "invalided udp port")
+		return
+	}
+	room, err := subscribe.Roomer.NewRoom(w.Conn, &conf, publicKey, udpPort)
 	if err != nil {
 		w.Result(dataType.Unknown, err.Error())
 		return
@@ -58,9 +64,9 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 }
 
 // GetInRoom 进入房间
-// params: [rooId: string, publicKey: string, password?: string]
+// params: [rooId: string, publicKey: string, udpPort: int, password?: string]
 func (r RoomController) GetInRoom(w *wes.WContext) {
-	if len(w.Request.Params) <= 1 {
+	if len(w.Request.Params) < 3 {
 		w.Result(dataType.WrongBody, "invalid params")
 		return
 	}
@@ -82,9 +88,9 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		return
 	}
 	var password = ""
-	if len(w.Request.Params) > 2 {
+	if len(w.Request.Params) > 3 {
 		var p string
-		err := json.Unmarshal(w.Request.Params[2], &p)
+		err := json.Unmarshal(w.Request.Params[3], &p)
 		if err != nil || len(p) > 16 {
 			w.Result(dataType.WrongBody, "invalided password")
 			return
@@ -96,7 +102,13 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		w.Result(dataType.DeniedByPermission, "invalid password")
 		return
 	}
-	err = room.Subscribe(w.Conn, publicKey)
+	var udpPort int
+	err = json.Unmarshal(w.Request.Params[2], &udpPort)
+	if err != nil || udpPort <= 0 || udpPort > 65535 {
+		w.Result(dataType.WrongBody, "invalided udp port")
+		return
+	}
+	err = room.Subscribe(w.Conn, publicKey, udpPort)
 	if err != nil {
 		w.Result(dataType.Unknown, "subscribe failed: "+err.Error())
 		return

@@ -28,6 +28,9 @@ type MateInfo struct {
 	Owner     bool   `json:"owner"`
 	Vlan      int    `json:"vlan"`
 	PublicKey string `json:"publicKey"`
+	WgIp      string `json:"wgIp"`    // 成员真实IP
+	WgPort    int    `json:"wgPort"`  // 成员真实端口
+	UdpPort   int    `json:"udpPort"` // 成员本地udp端口
 }
 
 // 用于接收创建房间数据
@@ -55,6 +58,7 @@ type mateAttr struct {
 	PublicKey string // ed25519生成的32位公钥，用于vlan通信
 	WgIP      string // 成员真实wg外网ip
 	WgPort    int    // 成员真实wg外网端口
+	UdpPort   int    // 成员本地udp端口
 }
 
 // RoomConfig 房间设置
@@ -86,6 +90,7 @@ type roomManager struct {
 	lock      sync.RWMutex
 }
 
+// 创建时传入owner信息
 func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ...any) (*room, error) {
 	roomName := uuid.New().String()
 	newRoom := &room{
@@ -100,7 +105,7 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ..
 	if err != nil {
 		return nil, err
 	}
-	newRoom.subs[owner] = mateAttr{Vlan: connVlan, PublicKey: args[0].(string)}
+	newRoom.subs[owner] = mateAttr{Vlan: connVlan, PublicKey: args[0].(string), UdpPort: args[1].(int)}
 	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	owner.DoneHook("publish.room."+newRoom.uuid, func() {
 		info := owner.AuthInfo()
@@ -187,19 +192,7 @@ func (r *roomManager) List(page int, size int) []RoomInfo {
 		if !ok {
 			continue
 		}
-		ownerInfo := room_.Owner.AuthInfo()
-		item := RoomInfo{
-			RoomID:       room_.uuid,
-			RoomTitle:    room_.Config.Title,
-			Description:  room_.Config.Description,
-			OwnerID:      ownerInfo.UserId,
-			OwnerName:    ownerInfo.Username,
-			MemberCount:  len(room_.subs),
-			MaxMember:    room_.Config.MaxMember,
-			WithPassword: *room_.Config.Password != "",
-			Forbidden:    room_.forbidden,
-		}
-		infos = append(infos, item)
+		infos = append(infos, room_.Info())
 	}
 	return infos
 }
@@ -221,6 +214,23 @@ type room struct {
 
 	lifetimeCtx context.Context
 	lifetimeEnd context.CancelFunc
+}
+
+func (r *room) Info() RoomInfo {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	owner := r.Owner.AuthInfo()
+	return RoomInfo{
+		RoomID:       r.uuid,
+		RoomTitle:    r.Config.Title,
+		Description:  r.Config.Description,
+		OwnerID:      owner.UserId,
+		OwnerName:    owner.Username,
+		MemberCount:  len(r.subs),
+		MaxMember:    r.Config.MaxMember,
+		WithPassword: *r.Config.Password != "",
+		Forbidden:    r.forbidden,
+	}
 }
 
 func (r *room) UUID() string {
@@ -250,6 +260,9 @@ func (r *room) Mates() []MateInfo {
 			Owner:     c == r.Owner,
 			Vlan:      int(attr.Vlan),
 			PublicKey: attr.PublicKey,
+			WgIp:      attr.WgIP,
+			WgPort:    attr.WgPort,
+			UdpPort:   attr.UdpPort,
 		})
 	}
 	return resp
@@ -303,7 +316,7 @@ func (r *room) UpdateTrueAddr(uid string, ip string, port int) {
 
 }
 
-// Subscribe 订阅房间
+// Subscribe 订阅房间，订阅时传入publicKey和本地udp端口
 func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -329,7 +342,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	if err != nil {
 		return err
 	}
-	r.subs[c] = mateAttr{Vlan: connVlan}
+	r.subs[c] = mateAttr{Vlan: connVlan, UdpPort: args[1].(int), PublicKey: args[0].(string)}
 	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room %s", authInfo.UserId, r.uuid))
 	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	c.DoneHook("publish.room."+r.uuid, func() {
@@ -348,6 +361,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 		Owner:     false,
 		Vlan:      int(connVlan),
 		PublicKey: args[0].(string),
+		UdpPort:   args[1].(int),
 	}, "in", c)
 
 	return nil
