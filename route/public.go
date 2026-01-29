@@ -2,6 +2,7 @@ package route
 
 import (
 	"ginWeb/config"
+	configApi "ginWeb/controller/config"
 	"ginWeb/controller/debug"
 	"ginWeb/controller/perm"
 	"ginWeb/controller/server"
@@ -13,20 +14,23 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	controller "ginWeb/controller/auth"
 )
-import "ginWeb/controller/auth"
 
 // InitRoute 注册路由函数
 func InitRoute(g *gin.Engine) {
 
 	// 开放api组
 	api := g.Group("/api")
+	api.Handle("POST", "/register", middleware.NewIpLimiter(10, 0, 0, "/register").HttpHandle, user.PublicRegister)
 	controller.Login{}.RegisterRoute("/login", api)
 	server.Server{}.RegisterRoute("/server", api)
 
 	// 带token验证的api组
 	sapi := g.Group("/sapi")
 	sapi.Use(middleware.AuthMiddle.HttpHandle)
+	configApi.Admin{}.RegisterRoute("/config", sapi)
 	controller.Logout{}.RegisterRoute("/logout", sapi)
 	controller.FreshToken{}.RegisterRoute("/freshToken", sapi)
 	server.InfoMessage{}.RegisterRoute("/info", sapi)

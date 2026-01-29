@@ -4,6 +4,8 @@ const (
 	Success = 0
 	// Unknown 未知错误
 	Unknown = 1
+	// Forbidden 禁止访问
+	Forbidden = 2
 	// WrongBody 错误报文
 	WrongBody = 10001
 	// WrongData 数据内容错误

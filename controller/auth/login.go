@@ -33,7 +33,7 @@ func (receiver Login) V1(c *gin.Context) {
 	}
 	// 查找用户
 	var u systemMode.User
-	result := database.Db.Where("username = ?", j.Username).First(&u)
+	result := database.Db.Where("username = ? and deleted = 0 and available = 1", j.Username).First(&u)
 	pwd := auth.HashString(j.Password)
 	if result.Error != nil || pwd != u.PasswordHash {
 		c.AbortWithStatusJSON(http.StatusOK, dataType.JsonWrong{Code: dataType.WrongData,

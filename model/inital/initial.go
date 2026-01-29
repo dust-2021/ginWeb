@@ -34,6 +34,7 @@ func InitializeMode() {
 		Phone:        config.Conf.Server.AdminUser.Phone,
 		Email:        config.Conf.Server.AdminUser.Email,
 		PasswordHash: hashPwd,
+		Available:    true,
 	}
 	role := authMode.Role{
 		BaseModel: model.BaseModel{

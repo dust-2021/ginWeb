@@ -11,63 +11,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	nanoid "github.com/matoous/go-nanoid/v2"
 )
 
 type Users struct {
-}
-
-type dataCreate struct {
-	UserName string `json:"username" binding:"required,max=32,min=3"`
-	Password string `json:"password" binding:"required,max=32,min=6"`
-	Phone    string `json:"phone"`
-	Email    string `json:"email"`
-}
-
-func (u Users) Create(ctx *gin.Context) {
-	var reqData dataCreate
-	err := ctx.ShouldBindJSON(&reqData)
-	if err != nil {
-		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code:    dataType.WrongData,
-			Message: err.Error(),
-		})
-		return
-	}
-	//if reqData.Phone == "" && reqData.Email == "" {
-	//	ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-	//		Code:    dataType.WrongData,
-	//		Message: "phone or email is required",
-	//	})
-	//}
-	// TODO 按需添加邮箱或手机验证
-	hashed := auth.HashString(reqData.Password)
-	newUser := systemMode.User{
-		Uuid:         uuid.New().String(),
-		Phone:        reqData.Phone,
-		Email:        reqData.Email,
-		Username:     reqData.UserName,
-		PasswordHash: hashed,
-		Available:    true,
-	}
-	flag, err := newUser.Exist()
-	if err != nil {
-		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code:    dataType.Unknown,
-			Message: err.Error(),
-		})
-		return
-	}
-	if flag {
-		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code:    dataType.AlreadyExist,
-			Message: "User already exist",
-		})
-		return
-	}
-	_ = database.Db.Create(&newUser)
-	ctx.JSON(200, dataType.JsonRes{
-		Code: dataType.Success,
-	})
 }
 
 type dataUpdate struct {
@@ -134,6 +81,11 @@ func (u Users) Update(ctx *gin.Context) {
 	})
 }
 
+type createPiecesResp struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 // CreatePieces 批量创建账号
 func (u Users) CreatePieces(ctx *gin.Context) {
 	count := ctx.Query("count")
@@ -145,20 +97,21 @@ func (u Users) CreatePieces(ctx *gin.Context) {
 		})
 		return
 	}
-	var result []interface{}
+	var result []createPiecesResp
 	tx := database.Db.Begin()
-	for i := 0; i < c; i++ {
+	for range c {
+		randomName, _ := nanoid.New(12)
 		username := uuid.New().String()
 		password := tools.GenerateRandomString(6)
 		resp := tx.Table("user").Create(&systemMode.User{
 			Uuid:         username,
-			Username:     username,
+			Username:     randomName,
 			PasswordHash: auth.HashString(password),
 			Available:    true,
 		})
-		result = append(result, map[string]interface{}{
-			"username": username,
-			"password": password,
+		result = append(result, createPiecesResp{
+			Username: randomName,
+			Password: password,
 		})
 		if resp.Error != nil {
 			ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
@@ -178,7 +131,6 @@ func (u Users) CreatePieces(ctx *gin.Context) {
 
 func (u Users) RegisterRoute(r string, router *gin.RouterGroup) {
 	g := router.Group(r)
-	g.Handle("POST", "create", u.Create)
 	g.Handle("POST", "update", u.Update)
 	g.Handle("GET", "createPieces", middleware.NewPermission([]string{"admin"}).HttpHandle, u.CreatePieces)
 }

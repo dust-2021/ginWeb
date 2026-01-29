@@ -42,8 +42,9 @@ var upper = &websocket.Upgrader{
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 var ConnManager = &connManager{
-	lock:  &sync.RWMutex{},
-	conns: make(map[string]*Connection),
+	lock:        &sync.RWMutex{},
+	conns:       make(map[string]*Connection),
+	userConnMap: make(map[string]string),
 }
 
 type connManager struct {
@@ -107,14 +108,16 @@ func (m *connManager) Count() int {
 func (m *connManager) userConn(userUuid string, connId string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if _, f := m.userConnMap[userUuid]; !f {
-		return
+	if existConnId, f := m.userConnMap[userUuid]; f {
+		// 已存在映射，则断开旧链接
+		if existConn, ok := m.conns[existConnId]; ok {
+			// TODO: 锁内执行死锁，锁外执行存在同时连接问题
+			go existConn.Disconnect()
+		}
 	}
-	c, f := m.conns[connId]
-	if f {
-		// 锁内异步执行
-		go c.Disconnect()
-	}
+	// 更新为新连接
+	m.userConnMap[userUuid] = connId
+
 }
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
