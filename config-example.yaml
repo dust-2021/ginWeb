@@ -1,0 +1,57 @@
+server:
+  # 暂未使用
+  nodeID: 0
+  # 主端口
+  port: 8000
+  # wireguard虚拟局域网端口
+  udpPort: 8001
+  # 测试端口
+  pprofPort: 8002
+  # turn服务端口
+  turnPort: 8003
+  # vlan前两段地址，掩码固定为16，服务器固定为 *.*.0.1
+  vlan: [10, 20]
+  # 32位随机字符串, 用于token、密码盐，生成用户后不可修改
+  secret: "0eb67f6f053e86948ce2a73da05b96e1"
+  # true 使用aes加密token， false 使用hmac签名token
+  tokenEncrypt: false
+  # token数据最大长度
+  tokenSize: 1024
+  # token有效时间 单位s
+  tokenExpire: 864000
+
+  websocket:
+    # ws连接生命周期
+    wsLifeTime: 86400
+    # 连接心跳检测间隔时间
+    wsHeartbeat: 60
+    # 连接最大等待请求
+    wsMaxWaiting: 10
+    # ws处理超时时间
+    wsTaskTimeout: 10
+
+  # 是否开启pprof等调试组件
+  debug: false
+  # 日志输出
+  logger:
+    path: "/var/log/mole"
+    level: "info"
+
+  # 自动生成的系统管理员用户: 必填
+  adminUser:
+    username: "mole"
+    phone: "13900000000"
+    email: "xxx@qq.com"
+    password: "123456"
+
+# ===== 数据库配置
+database:
+  # 是否生成所有数据表
+  initial: true
+  link: "username:password@tcp(127.0.0.1:3306)/ginweb"
+  poolSize: 10
+  maxConnect: 5
+
+redis:
+  host: "localhost"
+  port: 6379

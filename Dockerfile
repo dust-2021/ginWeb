@@ -5,7 +5,9 @@ VOLUME /var/log /var/log
 
 RUN go build -o app .
 
-EXPOSE 8000 
+EXPOSE 8000/tcp
+EXPOSE 8001/udp
+EXPOSE 8003/udp
 
 USER root
 
