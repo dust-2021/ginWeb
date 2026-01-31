@@ -224,6 +224,7 @@ func (c *Connection) listen() {
 		// 读取失败，被动关闭连接
 		type_, message, err := c.conn.ReadMessage()
 		if err != nil {
+			loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("read message failed from %s: %s", c.IP, err.Error()))
 			c.Disconnect()
 			break
 		}

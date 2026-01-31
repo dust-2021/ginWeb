@@ -48,4 +48,5 @@ func (l *loginStatus) WsHandle(w *wes.WContext) {
 	}
 }
 
+// token 验证中间件实例
 var AuthMiddle = &loginStatus{}

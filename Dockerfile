@@ -5,6 +5,8 @@ VOLUME /var/log /var/log
 
 RUN go build -o app .
 
+EXPOSE 8000 
+
 USER root
 
 COPY product.yaml ./config.yaml

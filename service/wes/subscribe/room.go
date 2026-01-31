@@ -228,7 +228,7 @@ func (r *room) Info() RoomInfo {
 		OwnerName:    owner.Username,
 		MemberCount:  len(r.subs),
 		MaxMember:    r.Config.MaxMember,
-		WithPassword: *r.Config.Password != "",
+		WithPassword: r.Config.Password != nil && *r.Config.Password != "",
 		Forbidden:    r.forbidden,
 	}
 }
@@ -420,7 +420,7 @@ func (r *room) Forbidden(to bool) {
 // Notice 发送系统通知，sender为通知触发者，不会收到消息，不会显式出现在报文中
 func (r *room) Notice(v interface{}, type_ string, sender *wes.Connection) {
 	note := "publish.room.notice"
-	if len(type_) > 0 {
+	if type_ != "" {
 		note += "." + type_
 	}
 	var res = wes.Resp{

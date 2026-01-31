@@ -2,6 +2,8 @@ package wireguard
 
 import (
 	"fmt"
+	"os/exec"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/conn"
@@ -64,7 +66,19 @@ func (ws *tunDevice) Open() (err error) {
 	if netlink.AddrAdd(ws.Link, addr) != nil {
 		return fmt.Errorf("add wireguard vlan ip failed: %v", err)
 	}
-	return netlink.LinkSetUp(ws.Link)
+	err = netlink.LinkSetUp(ws.Link)
+	if err != nil {
+		return fmt.Errorf("set wireguard link up failed: %v", err)
+	}
+	// err = enableIPForwarding()
+	// if err != nil {
+	// 	return fmt.Errorf("enable ip forwarding failed: %v", err)
+	// }
+	// err = setupIPTables(realName)
+	// if err != nil {
+	// 	return fmt.Errorf("setup iptables failed: %v", err)
+	// }
+	return nil
 }
 
 func (ws *tunDevice) Close() {
@@ -74,4 +88,42 @@ func (ws *tunDevice) Close() {
 	if ws.Tun != nil {
 		ws.Tun.Close()
 	}
+}
+
+// 启用内核 IP 转发
+func enableIPForwarding() error {
+	// 方法 1：直接写入 sysctl（立即生效）
+	cmd := exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1")
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	// 方法 2：或者直接写文件
+	// return os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0644)
+
+	return nil
+}
+
+// 配置 iptables 转发规则
+func setupIPTables(interfaceName string) error {
+	rules := [][]string{
+		// 允许 WireGuard 接口的转发流量
+		{"-A", "FORWARD", "-i", interfaceName, "-j", "ACCEPT"},
+		{"-A", "FORWARD", "-o", interfaceName, "-j", "ACCEPT"},
+
+		// 允许已建立的连接
+		// {"-A", "FORWARD", "-i", interfaceName, "-o", interfaceName, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+	}
+
+	for _, rule := range rules {
+		cmd := exec.Command("iptables", rule...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			// 忽略 "already exists" 错误
+			if !strings.Contains(string(output), "already exists") {
+				return fmt.Errorf("iptables rule failed: %v, output: %s", err, output)
+			}
+		}
+	}
+
+	return nil
 }
