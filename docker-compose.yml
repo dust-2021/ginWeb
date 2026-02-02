@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mole-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: mole
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - app-network
+    # ✅ 添加健康检查
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mole-redis
+    restart: always
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    # ✅ Redis 健康检查
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  app:
+    image: molev1.0
+    container_name: mole
+    # ✅ 修改 depends_on，等待服务健康
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    cap_add:
+      - cap_net_bind_service
+      - cap_net_admin
+      - cap_net_raw
+    ports:
+      - "8000:8000"
+      - "8001:8001/udp"
+      - "8003:8003/udp"
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - "/var/log:/var/log"
+    networks:
+      - app-network
+
+volumes:
+  mysql-data:
+  redis-data:
+  
+
+networks:
+  app-network:
+    driver: bridge
