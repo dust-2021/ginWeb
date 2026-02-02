@@ -111,7 +111,7 @@ func (m *connManager) userConn(userUuid string, connId string) {
 	if existConnId, f := m.userConnMap[userUuid]; f {
 		// 已存在映射，则断开旧链接
 		if existConn, ok := m.conns[existConnId]; ok {
-			// TODO: 锁内执行死锁，锁外执行存在同时连接问题
+			// TODO: 锁内执行死锁，锁外执行存在同时连接问题，考虑使用中间件
 			go existConn.Disconnect()
 		}
 	}
@@ -299,6 +299,7 @@ func (c *Connection) heartbeat() {
 				_ = c.Send([]byte("ping"))
 				go c.waitHeartbeat(t.Unix())
 			case <-c.lifetimeCtx.Done():
+				loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("close heartbeat from %s", c.conn.RemoteAddr().String()))
 				return
 			}
 		}

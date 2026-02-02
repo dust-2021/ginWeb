@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"ginWeb/config"
 	"ginWeb/model/inital"
+	"ginWeb/route"
 	"ginWeb/service/scheduler"
 	"ginWeb/service/udp"
 	"ginWeb/service/wireguard"
 	"ginWeb/utils/loguru"
-	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+
+	"github.com/gin-gonic/gin"
 )
-import "ginWeb/route"
 
 func application() *gin.Engine {
 	if !config.Conf.Server.Debug {

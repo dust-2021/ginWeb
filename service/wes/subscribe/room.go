@@ -92,9 +92,10 @@ type roomManager struct {
 
 // 创建时传入owner信息
 func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ...any) (*room, error) {
-	roomName := uuid.New().String()
+	roomName := uuid.NewString()
 	newRoom := &room{
 		uuid:      roomName,
+		Link:      uuid.NewString(),
 		subs:      make(map[*wes.Connection]mateAttr),
 		Owner:     owner,
 		lock:      sync.RWMutex{},
@@ -131,11 +132,19 @@ func (r *roomManager) Size() int {
 	return len(Roomer.roomIndex)
 }
 
-func (r *roomManager) Get(name string) (*room, bool) {
+func (r *roomManager) Get(roomUidOrLink string) (*room, bool) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	v, ok := r.rooms[name]
-	return v, ok
+	v, ok := r.rooms[roomUidOrLink]
+	if ok {
+		return v, ok
+	}
+	for _, room := range r.rooms {
+		if room.Link == roomUidOrLink {
+			return room, true
+		}
+	}
+	return nil, false
 }
 
 func (r *roomManager) removeIndex(key string) {
@@ -152,22 +161,22 @@ func (r *roomManager) removeIndex(key string) {
 }
 
 // Set 添加房间，已存在同名房间则返回false
-func (r *roomManager) Set(name string, room *room) bool {
+func (r *roomManager) Set(roomUid string, room *room) bool {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if _, ok := r.rooms[name]; ok {
+	if _, ok := r.rooms[roomUid]; ok {
 		return false
 	}
-	r.rooms[name] = room
-	r.roomIndex = append(r.roomIndex, name)
+	r.rooms[roomUid] = room
+	r.roomIndex = append(r.roomIndex, roomUid)
 	return true
 }
 
-func (r *roomManager) Del(name string) {
+func (r *roomManager) Del(roomUid string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	delete(r.rooms, name)
-	r.removeIndex(name)
+	delete(r.rooms, roomUid)
+	r.removeIndex(roomUid)
 }
 
 func (r *roomManager) List(page int, size int) []RoomInfo {
@@ -206,6 +215,7 @@ type room struct {
 	subs   map[*wes.Connection]mateAttr // 成员ws连接对象
 	lock   sync.RWMutex                 // 对象读写锁
 	Owner  *wes.Connection              // 房间持有者
+	Link   string                       // 无视关闭状态和密码的进房链接
 	Config *RoomConfig                  `json:"config"` //房间设置
 
 	refreshCtx context.Context // 房间生命周期刷新上下文
@@ -350,7 +360,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 		r.lock.Lock()
 		defer r.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room %s by done hook",
-			authInfo.UserId, r.UUID()))
+			authInfo.UserId, r.uuid))
 		// 最后执行删除，防止房间关闭导致空指针访问
 		r.deleteMember(c)
 	})

@@ -59,8 +59,9 @@ func (r RoomController) CreateRoom(w *wes.WContext) {
 	type respData struct {
 		RoomId string               `json:"roomId"`
 		Mates  []subscribe.MateInfo `json:"mates"`
+		Link   string               `json:"link"`
 	}
-	w.Result(dataType.Success, respData{RoomId: room.UUID(), Mates: room.Mates()})
+	w.Result(dataType.Success, respData{RoomId: room.UUID(), Mates: room.Mates(), Link: room.Link})
 }
 
 // GetInRoom 进入房间
@@ -97,8 +98,8 @@ func (r RoomController) GetInRoom(w *wes.WContext) {
 		}
 		password = p
 	}
-
-	if room.Config.Password != nil && password != *room.Config.Password {
+	// 房间有密码且参数不为房间链接时才进行密码检测
+	if room.Config.Password != nil && room.Link != roomId && password != *room.Config.Password {
 		w.Result(dataType.DeniedByPermission, "invalid password")
 		return
 	}
