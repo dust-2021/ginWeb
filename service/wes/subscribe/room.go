@@ -249,7 +249,7 @@ func (r *room) UUID() string {
 func (r *room) OwnerUuid() string {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	return r.ownerConn.Uuid
+	return r.ownerConn.UserUuid
 }
 
 func (r *room) ExistMember(c *wes.Connection) bool {
