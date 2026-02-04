@@ -42,8 +42,7 @@ func (l *loginStatus) HttpHandle(c *gin.Context) {
 }
 
 func (l *loginStatus) WsHandle(w *wes.WContext) {
-	temp := w.Conn.AuthInfo()
-	if temp.UserId == 0 || temp.Expire.Before(time.Now()) {
+	if w.Conn.UserId == 0 || w.Conn.AuthExpireTime.Before(time.Now()) {
 		w.Result(dataType.NoToken, "without auth")
 	}
 }

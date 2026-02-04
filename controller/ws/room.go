@@ -161,7 +161,7 @@ func (r RoomController) CloseRoom(w *wes.WContext) {
 		w.Result(dataType.NotFound, "room not found")
 		return
 	}
-	if room.Owner.AuthInfo().UserId != w.Conn.AuthInfo().UserId {
+	if room.OwnerUuid() != w.Conn.UserUuid {
 		w.Result(dataType.DeniedByPermission, "you are not room owner")
 		return
 	}
@@ -188,7 +188,7 @@ func (r RoomController) ForbiddenRoom(w *wes.WContext) {
 	if !ok {
 		w.Result(dataType.NotFound, "room not found")
 	}
-	if room.Owner.AuthInfo().UserId != w.Conn.AuthInfo().UserId {
+	if room.OwnerUuid() != w.Conn.UserUuid {
 		w.Result(dataType.DeniedByPermission, "you are not room owner")
 		return
 	}

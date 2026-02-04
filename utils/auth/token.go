@@ -173,6 +173,9 @@ func aesDecrypt(tokenText string) (token *Token, err error) {
 
 // CheckToken 检测token是否有效
 func CheckToken(tokenText string) (token *Token, err error) {
+	if tokenText == "" {
+		return nil, errors.New("invalied")
+	}
 	if config.Conf.Server.TokenEncrypt {
 		token, err = aesDecrypt(tokenText)
 	} else {

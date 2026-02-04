@@ -3,7 +3,6 @@ package wes
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"ginWeb/config"
 	reCache "ginWeb/service/cache"
@@ -41,6 +40,9 @@ var upper = &websocket.Upgrader{
 // |                                           管理类                                               |
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+// 连接钩子函数名称
+const managerHookName string = "connManager"
+
 var ConnManager = &connManager{
 	lock:        &sync.RWMutex{},
 	conns:       make(map[string]*Connection),
@@ -49,11 +51,11 @@ var ConnManager = &connManager{
 
 type connManager struct {
 	lock        *sync.RWMutex
-	conns       map[string]*Connection
-	userConnMap map[string]string
+	conns       map[string]*Connection // 连接uuid和连接对象的映射
+	userConnMap map[string]string      // 用户uuid和连接uuid的映射
 }
 
-func (m *connManager) New(conn *websocket.Conn) *Connection {
+func (m *connManager) New(conn *websocket.Conn, token *auth.Token, mac string) *Connection {
 	// 创建生命周期管理上下文
 	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
 	c := &Connection{
@@ -66,7 +68,12 @@ func (m *connManager) New(conn *websocket.Conn) *Connection {
 		lock:           sync.RWMutex{},
 		connectTime:    time.Now(),
 		IP:             conn.RemoteAddr().String(),
-		userPermission: make([]string, 0),
+		MacAddress:     mac,
+		UserId:         token.UserId,
+		UserUuid:       token.UserUUID,
+		UserName:       token.Username,
+		UserPermission: token.Permission,
+		AuthExpireTime: token.Expire,
 		disconnectOnce: sync.Once{},
 
 		doneHooks: make(map[string]func()),
@@ -80,12 +87,11 @@ func (m *connManager) New(conn *websocket.Conn) *Connection {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.conns[c.Uuid] = c
-	c.DoneHook("-", func() {
+	c.DoneHook(managerHookName, func() {
 		m.lock.Lock()
 		defer m.lock.Unlock()
 		delete(m.conns, c.Uuid)
-		userUuid := c.AuthInfo().UserUUID
-		delete(m.userConnMap, userUuid)
+		delete(m.userConnMap, c.UserUuid)
 	})
 	return c
 }
@@ -111,8 +117,11 @@ func (m *connManager) userConn(userUuid string, connId string) {
 	if existConnId, f := m.userConnMap[userUuid]; f {
 		// 已存在映射，则断开旧链接
 		if existConn, ok := m.conns[existConnId]; ok {
-			// TODO: 锁内执行死锁，锁外执行存在同时连接问题，考虑使用中间件
-			go existConn.Disconnect()
+			// 先删除钩子函数防止死锁
+			existConn.DeleteDoneHook(managerHookName)
+			// 清除映射
+			delete(m.conns, existConn.Uuid)
+			existConn.Disconnect()
 		}
 	}
 	// 更新为新连接
@@ -138,12 +147,12 @@ type Connection struct {
 
 	IP         string // 客户端IP，不可变
 	MacAddress string // 客户端mac，不可变
-	// 登录信息
-	userId         int64
-	userUuid       string
-	userName       string
-	userPermission []string
-	authExpireTime time.Time
+	// 登录信息 不可变
+	UserId         int64
+	UserUuid       string
+	UserName       string
+	UserPermission []string
+	AuthExpireTime time.Time
 	// 连接创建时间
 	connectTime time.Time
 	// 断开连接时的钩子任务
@@ -331,47 +340,6 @@ func (c *Connection) DeleteDoneHook(key string) {
 	}
 }
 
-// ========= 认证相关接口 ===========
-
-// Auth 登录认证，可选传入mac地址
-func (c *Connection) Auth(tokenStr string, mac ...string) error {
-	_, err := reCache.Get("blackToken", tokenStr)
-	if err == nil {
-		return errors.New("black token")
-	}
-	token, err := auth.CheckToken(tokenStr)
-	if err != nil {
-		return err
-	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.userId = token.UserId
-	c.userName = token.Username
-	c.userPermission = token.Permission
-	c.authExpireTime = token.Expire
-	c.userUuid = token.UserUUID
-	if len(mac) == 1 {
-		c.MacAddress = mac[0]
-	}
-	go ConnManager.userConn(token.UserUUID, c.Uuid)
-	return nil
-}
-
-// AuthInfo 获取token副本
-func (c *Connection) AuthInfo() *auth.Token {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	t := auth.Token{
-		UserId:     c.userId,
-		Username:   c.userName,
-		UserUUID:   c.userUuid,
-		Permission: append([]string{}, c.userPermission...),
-		Data:       make(map[string]interface{}),
-		Expire:     c.authExpireTime,
-	}
-	return &t
-}
-
 // ===============================
 
 // Disconnect 关闭连接
@@ -403,6 +371,23 @@ func (c *Connection) Disconnect() {
 
 // UpgradeConn ws路由升级函数
 func UpgradeConn(c *gin.Context) {
+	tokenS := c.Query("token")
+	// 验证是否为黑名单Token
+	_, err := reCache.Get("blackToken", tokenS)
+	if err == nil {
+		c.AbortWithStatusJSON(403, dataType.JsonWrong{
+			Code: dataType.BlackToken, Message: "invalid token",
+		})
+		return
+	}
+	token, _ := auth.CheckToken(tokenS)
+	if token == nil {
+		c.AbortWithStatusJSON(403, dataType.JsonWrong{
+			Code: dataType.Forbidden, Message: "invalid token",
+		})
+		return
+	}
+
 	conn, err := upper.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		c.AbortWithStatusJSON(200, dataType.JsonWrong{
@@ -415,7 +400,7 @@ func UpgradeConn(c *gin.Context) {
 		loguru.SimpleLog(loguru.Trace, "WS", fmt.Sprintf("receive ping data '%s' from: %s", appData, conn.RemoteAddr().String()))
 		return conn.WriteMessage(websocket.TextMessage, []byte("pong"))
 	})
-	connect := ConnManager.New(conn)
+	connect := ConnManager.New(conn, token, c.Query("mac"))
 	// 设置连接关闭时调用管理对象的Disconnect方法
 	conn.SetCloseHandler(func(code int, text string) error {
 		connect.Disconnect()

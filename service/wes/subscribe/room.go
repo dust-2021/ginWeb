@@ -97,7 +97,7 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ..
 		uuid:      roomName,
 		Link:      uuid.NewString(),
 		subs:      make(map[*wes.Connection]mateAttr),
-		Owner:     owner,
+		ownerConn: owner,
 		lock:      sync.RWMutex{},
 		Config:    config,
 		forbidden: true,
@@ -109,19 +109,17 @@ func (r *roomManager) NewRoom(owner *wes.Connection, config *RoomConfig, args ..
 	newRoom.subs[owner] = mateAttr{Vlan: connVlan, PublicKey: args[0].(string), UdpPort: args[1].(int)}
 	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	owner.DoneHook("publish.room."+newRoom.uuid, func() {
-		info := owner.AuthInfo()
 		wireguard.WireguardManager.RemovePeer(owner.Uuid)
 		newRoom.lock.Lock()
 		defer newRoom.lock.Unlock()
-		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room of %d by done hook",
-			info.UserId, info.UserId))
+		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room %s by done hook",
+			owner.UserId, newRoom.uuid))
 		// 最后执行删除，防止房间关闭导致空指针访问
 		newRoom.deleteMember(owner)
 	})
 	_ = r.Set(roomName, newRoom)
 
-	ownerInfo := owner.AuthInfo()
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", ownerInfo.Username, ownerInfo.UserId, roomName))
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room created by user %s id %d, room uuid %s", owner.UserName, owner.UserId, roomName))
 	_ = newRoom.Start("")
 	return newRoom, nil
 }
@@ -211,12 +209,12 @@ func (r *roomManager) List(page int, size int) []RoomInfo {
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 type room struct {
-	uuid   string                       // id
-	subs   map[*wes.Connection]mateAttr // 成员ws连接对象
-	lock   sync.RWMutex                 // 对象读写锁
-	Owner  *wes.Connection              // 房间持有者
-	Link   string                       // 无视关闭状态和密码的进房链接
-	Config *RoomConfig                  `json:"config"` //房间设置
+	uuid      string                       // id
+	subs      map[*wes.Connection]mateAttr // 成员ws连接对象
+	lock      sync.RWMutex                 // 对象读写锁
+	ownerConn *wes.Connection              // 房间持有者
+	Link      string                       // 无视关闭状态和密码的进房链接
+	Config    *RoomConfig                  `json:"config"` //房间设置
 
 	refreshCtx context.Context // 房间生命周期刷新上下文
 	refresh    context.CancelFunc
@@ -229,13 +227,12 @@ type room struct {
 func (r *room) Info() RoomInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	owner := r.Owner.AuthInfo()
 	return RoomInfo{
 		RoomID:       r.uuid,
 		RoomTitle:    r.Config.Title,
 		Description:  r.Config.Description,
-		OwnerID:      owner.UserId,
-		OwnerName:    owner.Username,
+		OwnerID:      r.ownerConn.UserId,
+		OwnerName:    r.ownerConn.UserName,
 		MemberCount:  len(r.subs),
 		MaxMember:    r.Config.MaxMember,
 		WithPassword: r.Config.Password != nil && *r.Config.Password != "",
@@ -247,6 +244,12 @@ func (r *room) UUID() string {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.uuid
+}
+
+func (r *room) OwnerUuid() string {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.ownerConn.Uuid
 }
 
 func (r *room) ExistMember(c *wes.Connection) bool {
@@ -262,12 +265,11 @@ func (r *room) Mates() []MateInfo {
 	defer r.lock.RUnlock()
 	resp := make([]MateInfo, 0)
 	for c, attr := range r.subs {
-		authInfo := c.AuthInfo()
 		resp = append(resp, MateInfo{
-			Name:      authInfo.Username,
-			Uuid:      authInfo.UserUUID,
-			Id:        int(authInfo.UserId),
-			Owner:     c == r.Owner,
+			Name:      c.UserName,
+			Uuid:      c.UserUuid,
+			Id:        int(c.UserId),
+			Owner:     c == r.ownerConn,
 			Vlan:      int(attr.Vlan),
 			PublicKey: attr.PublicKey,
 			WgIp:      attr.WgIP,
@@ -320,7 +322,7 @@ func (r *room) UpdateTrueAddr(uid string, ip string, port int) {
 		info.WgPort = port
 		r.subs[c] = info
 		loguru.SimpleLog(loguru.Debug, "ROOM", fmt.Sprintf("peer wg address update to %s:%d", ip, port))
-		go r.Notice(NoticeUpdateEndpoint{Uuid: c.AuthInfo().UserUUID, Ip: ip, Port: port}, "updatePeerEndpoint", c)
+		go r.Notice(NoticeUpdateEndpoint{Uuid: c.UserUuid, Ip: ip, Port: port}, "updatePeerEndpoint", c)
 		return
 	}
 
@@ -342,9 +344,8 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	if slices.Contains(r.Config.IPBlackList, c.IP) {
 		return errors.New("black ip")
 	}
-	authInfo := c.AuthInfo()
 	for _, id := range r.Config.UserIdBlackList {
-		if id == authInfo.UserId {
+		if id == c.UserId {
 			return errors.New("black user id")
 		}
 	}
@@ -353,21 +354,21 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 		return err
 	}
 	r.subs[c] = mateAttr{Vlan: connVlan, UdpPort: args[1].(int), PublicKey: args[0].(string)}
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room %s", authInfo.UserId, r.uuid))
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("user %d get in room %s", c.UserId, r.uuid))
 	// 将退出房间添加到ws连接关闭钩子中，主动退出房间将会删除该钩子
 	c.DoneHook("publish.room."+r.uuid, func() {
 		wireguard.WireguardManager.RemovePeer(c.Uuid)
 		r.lock.Lock()
 		defer r.lock.Unlock()
 		loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d force to exit room %s by done hook",
-			authInfo.UserId, r.uuid))
+			c.UserId, r.uuid))
 		// 最后执行删除，防止房间关闭导致空指针访问
 		r.deleteMember(c)
 	})
 	go r.Notice(MateInfo{
-		Id:        int(authInfo.UserId),
-		Name:      authInfo.Username,
-		Uuid:      authInfo.UserUUID,
+		Id:        int(c.UserId),
+		Name:      c.UserName,
+		Uuid:      c.UserUuid,
 		Owner:     false,
 		Vlan:      int(connVlan),
 		PublicKey: args[0].(string),
@@ -384,18 +385,17 @@ func (r *room) deleteMember(c *wes.Connection) {
 	if len(r.subs) == 0 {
 		r.shutdownFree()
 	}
-	info := c.AuthInfo()
-	go r.Notice(info.UserUUID, "out", c)
-	if c == r.Owner {
+	go r.Notice(c.UserUuid, "out", c)
+	if c == r.ownerConn {
 		// 推举下一个房主
 		for ele := range r.subs {
-			r.Owner = ele
+			r.ownerConn = ele
 			go func() {
 				type temp struct {
 					Old string `json:"old"`
 					New string `json:"new"`
 				}
-				r.Notice(temp{Old: info.UserUUID, New: r.Owner.AuthInfo().UserUUID}, "exchangeOwner", nil)
+				r.Notice(temp{Old: c.UserUuid, New: r.ownerConn.UserUuid}, "exchangeOwner", nil)
 			}()
 			break
 		}
@@ -410,8 +410,7 @@ func (r *room) UnSubscribe(c *wes.Connection, args ...any) error {
 	if _, ok := r.subs[c]; !ok {
 		return nil
 	}
-	authInfo := c.AuthInfo()
-	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %d exit room of %s", authInfo.UserId, r.uuid))
+	loguru.SimpleLog(loguru.Debug, "WS ROOM", fmt.Sprintf("user %s exit room of %s", c.UserUuid, r.uuid))
 	r.deleteMember(c)
 	// wireguard中删除peer
 	wireguard.WireguardManager.RemovePeer(c.Uuid)
@@ -448,15 +447,14 @@ func (r *room) Notice(v interface{}, type_ string, sender *wes.Connection) {
 
 // Message 房间内发送消息
 func (r *room) Message(msg string, sender *wes.Connection) {
-	senderInfo := sender.AuthInfo()
 	var res = wes.Resp{
 		Id:         r.uuid,
 		Method:     "publish.room.message",
 		StatusCode: dataType.Success,
 		Data: publisherResp{
-			SenderId:   senderInfo.UserId,
-			SenderName: senderInfo.Username,
-			SenderUuid: senderInfo.UserUUID,
+			SenderId:   sender.UserId,
+			SenderName: sender.UserName,
+			SenderUuid: sender.Uuid,
 			Timestamp:  time.Now().UnixMilli(),
 			Data:       msg,
 		},
@@ -487,7 +485,7 @@ func (r *room) Publish(v []byte, sender *wes.Connection) error {
 
 		err := c.Send(v)
 		if err != nil {
-			loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send to member %s failed", c.AuthInfo().Username))
+			loguru.SimpleLog(loguru.Error, "WS ROOM", fmt.Sprintf("send to member %s failed", c.UserUuid))
 		}
 	}
 
@@ -512,8 +510,7 @@ func (r *room) Start(...interface{}) error {
 // 无锁关闭room，包内防止死锁
 func (r *room) shutdownFree() {
 	clear(r.subs)
-	ownerInfo := r.Owner.AuthInfo()
-	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed, owner id %d", r.uuid, ownerInfo.UserId))
+	loguru.SimpleLog(loguru.Info, "WS ROOM", fmt.Sprintf("room uuid %s closed", r.uuid))
 	Roomer.Del(r.uuid)
 	r.lifetimeEnd()
 }
