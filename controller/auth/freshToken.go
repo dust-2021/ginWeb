@@ -1,11 +1,12 @@
-package controller
+package auth
 
 import (
 	"ginWeb/config"
 	"ginWeb/service/dataType"
 	"ginWeb/utils/auth"
-	"github.com/gin-gonic/gin"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type FreshToken struct {

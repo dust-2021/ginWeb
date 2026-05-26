@@ -1,4 +1,4 @@
-package controller
+package auth
 
 import (
 	reCache "ginWeb/service/cache"

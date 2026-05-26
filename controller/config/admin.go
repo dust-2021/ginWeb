@@ -11,6 +11,16 @@ import (
 type Admin struct {
 }
 
+func (a Admin) GetConfig(ctx *gin.Context) {
+
+	ctx.JSON(200, dataType.JsonRes{
+		Code: dataType.Success,
+		Data: map[string]any{
+			"enablePublicRegister": config.DynamicConf.EnablePublicRegister(),
+		},
+	})
+}
+
 func (a Admin) SetPublicRegister(ctx *gin.Context) {
 	v := ctx.Query("enable")
 	switch v {
@@ -33,5 +43,6 @@ func (a Admin) SetPublicRegister(ctx *gin.Context) {
 
 func (a Admin) RegisterRoute(route string, g *gin.RouterGroup) {
 	group := g.Group(route)
+	group.Handle("GET", "/getDynamicConfigs", middleware.NewPermission([]string{"admin"}).HttpHandle, a.GetConfig)
 	group.Handle("GET", "/setPublicRegister", middleware.NewPermission([]string{"admin"}).HttpHandle, a.SetPublicRegister)
 }

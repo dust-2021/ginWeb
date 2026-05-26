@@ -90,37 +90,39 @@ type createPiecesResp struct {
 func (u Users) CreatePieces(ctx *gin.Context) {
 	count := ctx.Query("count")
 	c, err := strconv.Atoi(count)
-	if err != nil || c > 20 {
+	if err != nil || c <= 0 || c > 2000 {
 		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
 			Code:    dataType.WrongData,
 			Message: "wrong count",
 		})
 		return
 	}
-	var result []createPiecesResp
+	var newUsers []systemMode.User = make([]systemMode.User, c)
+	var result []createPiecesResp = make([]createPiecesResp, c)
 	tx := database.Db.Begin()
-	for range c {
+	for i := range c {
 		randomName, _ := nanoid.New(12)
 		username := uuid.New().String()
 		password := tools.GenerateRandomString(6)
-		resp := tx.Table("user").Create(&systemMode.User{
+		newUsers[i] = systemMode.User{
 			Uuid:         username,
 			Username:     randomName,
 			PasswordHash: auth.HashString(password),
 			Available:    true,
-		})
-		result = append(result, createPiecesResp{
+		}
+		result[i] = createPiecesResp{
 			Username: randomName,
 			Password: password,
-		})
-		if resp.Error != nil {
-			ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-				Code:    dataType.Unknown,
-				Message: resp.Error.Error(),
-			})
-			tx.Rollback()
-			return
 		}
+	}
+	resp := tx.Table("user").Create(&newUsers)
+	if resp.Error != nil {
+		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code:    dataType.Unknown,
+			Message: resp.Error.Error(),
+		})
+		tx.Rollback()
+		return
 	}
 	tx.Commit()
 	ctx.JSON(200, dataType.JsonRes{

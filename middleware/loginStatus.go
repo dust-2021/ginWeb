@@ -14,6 +14,7 @@ import (
 type loginStatus struct {
 }
 
+// 登录验证中间件，将解析的token指针存入gin上下文
 func (l *loginStatus) HttpHandle(c *gin.Context) {
 	tokenStr := c.GetHeader("Token")
 	if tokenStr == "" {
@@ -23,7 +24,7 @@ func (l *loginStatus) HttpHandle(c *gin.Context) {
 		return
 	}
 	// 验证是否为黑名单Token
-	_, err := reCache.Get("blackToken", tokenStr)
+	_, err := reCache.Get("blackToken", tokenStr, nil, 0)
 	if err == nil {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: dataType.BlackToken, Message: "invalid token",

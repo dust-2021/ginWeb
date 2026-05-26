@@ -14,6 +14,15 @@ type PermissionData struct {
 	Desc string `json:"desc"`
 }
 
+func (p Permission) List(c *gin.Context) {
+	var perms []authMode.Permissions
+	database.Db.Find(&perms)
+	c.JSON(200, dataType.JsonRes{
+		Code: dataType.Success,
+		Data: perms,
+	})
+}
+
 func (p Permission) Create(c *gin.Context) {
 	var data PermissionData
 	err := c.ShouldBindJSON(data)
@@ -60,7 +69,20 @@ func (p Permission) Delete(c *gin.Context) {
 	})
 }
 
+type UpdateReqData struct {
+	Name string `json:"name" binding:"required"`
+}
+
 func (p Permission) Update(c *gin.Context) {
+	var data UpdateReqData
+	err := c.ShouldBindJSON(data)
+	if err != nil {
+		c.AbortWithStatusJSON(200, dataType.JsonWrong{
+			Code:    dataType.WrongBody,
+			Message: err.Error(),
+		})
+		return
+	}
 }
 
 func (p Permission) CreateGroup(c *gin.Context) {
@@ -74,6 +96,7 @@ func (p Permission) DeleteRole(c *gin.Context) {
 
 func (p Permission) RegisterRoute(r string, g *gin.RouterGroup) {
 	group := g.Group(r)
+	group.Handle("GET", "list", p.List)
 	group.Handle("GET", "create", p.Create)
 	group.Handle("GET", "delete", p.Delete)
 	group.Handle("POST", "update", p.Update)

@@ -20,6 +20,7 @@ func InitializeMode() {
 	err := db.Set("gorm:table_options", "charset=utf8mb4").AutoMigrate(&systemMode.User{}, &authMode.Permissions{},
 		&authMode.Group{}, &authMode.UserGroup{}, &authMode.GroupPermission{},
 		&authMode.Role{}, &authMode.UserRole{}, &authMode.RolePermission{},
+		&systemMode.UserBlacklist{},
 	)
 	if err != nil {
 		loguru.SimpleLog(loguru.Fatal, "SYSTEM", fmt.Sprintf("create table failed %s", err.Error()))

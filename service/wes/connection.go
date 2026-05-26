@@ -145,14 +145,17 @@ type Connection struct {
 	heartChan      chan int64    // 心跳监测信道
 	disconnectOnce sync.Once     // 断开连接单次执行锁
 
-	IP         string // 客户端IP，不可变
-	MacAddress string // 客户端mac，不可变
-	// 登录信息 不可变
+	// ==== 创建时初始化信息 不可变 =======
+	IP         string // 客户端IP
+	MacAddress string // 客户端mac
+	// 登录信息
 	UserId         int64
 	UserUuid       string
 	UserName       string
 	UserPermission []string
 	AuthExpireTime time.Time
+	// ==================================
+
 	// 连接创建时间
 	connectTime time.Time
 	// 断开连接时的钩子任务
@@ -344,6 +347,7 @@ func (c *Connection) DeleteDoneHook(key string) {
 
 // Disconnect 关闭连接
 func (c *Connection) Disconnect() {
+	// 钩子函数中若再次调用当前方法会导致once死锁
 	c.disconnectOnce.Do(func() {
 		// 执行所有钩子函数后再加锁执行连接的清理工作
 		for i := len(c.hookChain) - 1; i >= 0; i-- {
@@ -373,7 +377,7 @@ func (c *Connection) Disconnect() {
 func UpgradeConn(c *gin.Context) {
 	tokenS := c.Query("token")
 	// 验证是否为黑名单Token
-	_, err := reCache.Get("blackToken", tokenS)
+	_, err := reCache.Get("blackToken", tokenS, nil, 0)
 	if err == nil {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: dataType.BlackToken, Message: "invalid token",

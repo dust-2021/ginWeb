@@ -32,6 +32,12 @@ func (dc *DynamicConfig) Set(key DynamicConf_T, value any) {
 	dc.conf[key] = value
 }
 
+func (dc *DynamicConfig) Get(key DynamicConf_T) any {
+	dc.lock.RLock()
+	defer dc.lock.RUnlock()
+	return dc.conf[key]
+}
+
 var DynamicConf *DynamicConfig = &DynamicConfig{
 	conf: make(map[DynamicConf_T]any),
 	lock: sync.RWMutex{},
