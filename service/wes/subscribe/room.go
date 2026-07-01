@@ -259,6 +259,25 @@ func (r *room) ExistMember(c *wes.Connection) bool {
 	return ok
 }
 
+func (r *room) KickMember(c *wes.Connection, targetUuid string) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if c != r.ownerConn {
+		return errors.New("only owner can kick members")
+	}
+	for conn := range r.subs {
+		if conn.UserUuid == targetUuid {
+			wireguard.WireguardManager.RemovePeer(conn.Uuid)
+			go func() {
+				r.Notice(targetUuid, "kick", nil)
+				r.deleteMember(conn)
+			}()
+			return nil
+		}
+	}
+	return errors.New("member not found")
+}
+
 // Mates 所有成员
 func (r *room) Mates() []MateInfo {
 	r.lock.RLock()

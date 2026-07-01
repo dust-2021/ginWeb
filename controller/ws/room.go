@@ -221,6 +221,63 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 	w.Result(dataType.Success, room.Mates())
 }
 
+func (r RoomController) Link(w *wes.WContext) {
+	if len(w.Request.Params) != 1 {
+		w.Result(dataType.WrongBody, "invalid params")
+		return
+	}
+	var roomId string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
+	room, ok := subscribe.Roomer.Get(roomId)
+	if !ok {
+		w.Result(dataType.NotFound, "room not found")
+		return
+	}
+	if room.OwnerUuid() != w.Conn.UserUuid {
+		w.Result(dataType.DeniedByPermission, "you are not room owner")
+		return
+	}
+	w.Result(dataType.Success, room.Link)
+}
+
+func (r RoomController) KickMember(w *wes.WContext) {
+	if len(w.Request.Params) != 2 {
+		w.Result(dataType.WrongBody, "invalid params")
+		return
+	}
+	var roomId string
+	err := json.Unmarshal(w.Request.Params[0], &roomId)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided room id")
+		return
+	}
+	room, ok := subscribe.Roomer.Get(roomId)
+	if !ok {
+		w.Result(dataType.NotFound, "room not found")
+		return
+	}
+	if room.OwnerUuid() != w.Conn.UserUuid {
+		w.Result(dataType.DeniedByPermission, "you are not room owner")
+		return
+	}
+	var targetUuid string
+	err = json.Unmarshal(w.Request.Params[1], &targetUuid)
+	if err != nil {
+		w.Result(dataType.WrongBody, "invalided target uuid")
+		return
+	}
+	err = room.KickMember(w.Conn, targetUuid)
+	if err != nil {
+		w.Result(dataType.Unknown, err.Error())
+		return
+	}
+	w.Result(dataType.Success, "success")
+}
+
 // RoomMessage 发送消息
 // params: [roomId: string, message: string]
 func (r RoomController) RoomMessage(w *wes.WContext) {
@@ -251,41 +308,6 @@ func (r RoomController) RoomMessage(w *wes.WContext) {
 	}
 	room.Message(message, w.Conn)
 	w.Result(dataType.Success, "success")
-}
-
-// Nat 向目标IP发起nat请求
-// params: [rooId: string, key: string, targets: []string]
-func (r RoomController) Nat(w *wes.WContext) {
-	if len(w.Request.Params) != 3 {
-		w.Result(dataType.WrongBody, "invalid params")
-		return
-	}
-	var roomId string
-	var key string
-	var targets []string
-	err := json.Unmarshal(w.Request.Params[0], &roomId)
-	if err != nil {
-		w.Result(dataType.WrongBody, "invalided room id")
-		return
-	}
-	err = json.Unmarshal(w.Request.Params[1], &key)
-	if err != nil {
-		w.Result(dataType.WrongBody, "invalided key")
-		return
-	}
-	err = json.Unmarshal(w.Request.Params[2], &targets)
-	if err != nil {
-		w.Result(dataType.WrongBody, "invalided targets")
-		return
-	}
-	//room, ok := subscribe.Roomer.Get(roomId)
-	//if !ok {
-	//	w.Result(dataType.NotFound, "room not found")
-	//	return
-	//}
-	//for _, target := range targets {
-	//	room.Nat(target, key)
-	//}
 }
 
 // ListRoom 所有房间信息接口
@@ -335,5 +357,6 @@ func (r RoomController) RegisterWSRoute(route string, g *wes.Group) {
 	group.Register("message", r.RoomMessage)
 	group.Register("roommate", r.RoomMate)
 	group.Register("create", r.CreateRoom)
-	group.Register("nat", r.Nat)
+	group.Register("kick", r.KickMember)
+	group.Register("link", r.Link)
 }
