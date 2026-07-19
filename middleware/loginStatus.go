@@ -24,7 +24,7 @@ func (l *loginStatus) HttpHandle(c *gin.Context) {
 		return
 	}
 	// 验证是否为黑名单Token
-	_, err := reCache.Get("blackToken", tokenStr, nil, 0)
+	_, err := reCache.Get("blackToken", tokenStr, nil)
 	if err == nil {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: dataType.BlackToken, Message: "invalid token",

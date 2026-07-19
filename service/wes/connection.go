@@ -284,7 +284,6 @@ func (c *Connection) waitHeartbeat(tick int64) {
 	for {
 		select {
 		case <-c.lifetimeCtx.Done():
-			c.Disconnect()
 			return
 		case t := <-c.heartChan:
 			// 超过十秒或早于发心跳检测则无效
@@ -377,7 +376,7 @@ func (c *Connection) Disconnect() {
 func UpgradeConn(c *gin.Context) {
 	tokenS := c.Query("token")
 	// 验证是否为黑名单Token
-	_, err := reCache.Get("blackToken", tokenS, nil, 0)
+	_, err := reCache.Get("blackToken", tokenS, nil)
 	if err == nil {
 		c.AbortWithStatusJSON(403, dataType.JsonWrong{
 			Code: dataType.BlackToken, Message: "invalid token",

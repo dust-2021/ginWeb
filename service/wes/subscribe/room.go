@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"ginWeb/model/systemMode"
 	"ginWeb/service/dataType"
 	"ginWeb/service/wes"
 	"ginWeb/service/wireguard"
 	"ginWeb/utils/loguru"
-	"slices"
 	"sync"
 	"time"
 
@@ -63,14 +63,14 @@ type mateAttr struct {
 
 // RoomConfig 房间设置
 type RoomConfig struct {
-	Title           string   `json:"title" validate:"required,max=12,min=2"`               // 标题
-	Description     string   `json:"description" validate:"max=128"`                       // 描述
-	MaxMember       int      `json:"maxMember" validate:"gte=1,lte=256"`                   // 最大成员数
-	Password        *string  `json:"password,omitempty" validate:"omitempty,max=16,min=6"` // 房间密码
-	IPBlackList     []string `json:"blackList"`                                            // ip黑名单
-	UserIdBlackList []int64  `json:"UserIdBlackList"`                                      // id黑名单
-	DeviceBlackList []string `json:"deviceBlackList"`                                      // 设备黑名单
-	AutoClose       bool     `json:"autoClose"`                                            // 是否自动关闭
+	Title           string  `json:"title" validate:"required,max=12,min=2"`               // 标题
+	Description     string  `json:"description" validate:"max=128"`                       // 描述
+	MaxMember       int     `json:"maxMember" validate:"gte=1,lte=256"`                   // 最大成员数
+	Password        *string `json:"password,omitempty" validate:"omitempty,max=16,min=6"` // 房间密码
+	IPBlackList     bool    `json:"blackList"`                                            // ip黑名单
+	UserIdBlackList bool    `json:"UserIdBlackList"`                                      // id黑名单
+	DeviceBlackList bool    `json:"deviceBlackList"`                                      // 设备黑名单
+	AutoClose       bool    `json:"autoClose"`                                            // 是否自动关闭
 
 }
 
@@ -360,12 +360,31 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 	if r.Config.MaxMember != 0 && len(r.subs) >= r.Config.MaxMember {
 		return errors.New("room is full")
 	}
-	if slices.Contains(r.Config.IPBlackList, c.IP) {
-		return errors.New("black ip")
+	if r.Config.UserIdBlackList {
+		exist, err := systemMode.ExistInList(r.OwnerUuid(), c.UserUuid)
+		if err != nil {
+			return err
+		}
+		if exist {
+			return errors.New("you are in the blacklist of this room")
+		}
 	}
-	for _, id := range r.Config.UserIdBlackList {
-		if id == c.UserId {
-			return errors.New("black user id")
+	if r.Config.IPBlackList {
+		exist, err := systemMode.ExistInList(r.OwnerUuid(), c.IP)
+		if err != nil {
+			return err
+		}
+		if exist {
+			return errors.New("you are in the blacklist of this room")
+		}
+	}
+	if r.Config.DeviceBlackList {
+		exist, err := systemMode.ExistInList(r.OwnerUuid(), c.MacAddress)
+		if err != nil {
+			return err
+		}
+		if exist {
+			return errors.New("you are in the blacklist of this room")
 		}
 	}
 	connVlan, err := wireguard.WireguardManager.AddPeer(c.Uuid, args[0].(string), r.UpdateTrueAddr)

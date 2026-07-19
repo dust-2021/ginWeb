@@ -61,7 +61,7 @@ func regetCache(key string, f func() (any, error)) (any, error) {
 }
 
 // 获取缓存数据，不存在则会重新加载
-func Get(namespace string, key string, reget func() (any, error), ex uint) (any, error) {
+func Get(namespace string, key string, reget func() (any, error)) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	name := formatter(namespace, key)
@@ -73,6 +73,16 @@ func Get(namespace string, key string, reget func() (any, error), ex uint) (any,
 		return nil, resp.Err()
 	}
 	return resp.Val(), nil
+}
+
+func Del(namespace string, key string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	resp := database.Rdb.Del(ctx, formatter(namespace, key))
+	if resp.Err() != nil {
+		return resp.Err()
+	}
+	return nil
 }
 
 func Incr(namespace string, key string) (int64, error) {
