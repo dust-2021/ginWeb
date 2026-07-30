@@ -8,10 +8,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func mapType(r string) int {
+	switch r {
+	case "uuid":
+		return 0
+	case "ip":
+		return 1
+	case "device":
+		return 2
+	default:
+		return 0
+	}
+
+}
+
 type UserList struct{}
 
 func (u UserList) Add(ctx *gin.Context) {
-	target := ctx.Query("uuid")
+	target := ctx.Query("id")
+	type_ := ctx.Param("type")
 	tokenS, f := ctx.Get("token")
 	token, flag := tokenS.(*auth.Token)
 	if !f || !flag {
@@ -21,16 +36,10 @@ func (u UserList) Add(ctx *gin.Context) {
 		})
 		return
 	}
-	if target == token.UserUUID {
-		ctx.AbortWithStatusJSON(200, dataType.JsonWrong{
-			Code:    dataType.WrongData,
-			Message: "can't add yourself to blacklist",
-		})
-		return
-	}
 	data := systemMode.UserBlacklist{
 		UserUuid:   token.UserUUID,
 		TargetUuid: target,
+		Type:       mapType(type_),
 	}
 	err := data.Add()
 	if err != nil {
@@ -45,7 +54,8 @@ func (u UserList) Add(ctx *gin.Context) {
 }
 
 func (u UserList) Delete(ctx *gin.Context) {
-	target := ctx.Query("uuid")
+	target := ctx.Query("id")
+	type_ := ctx.Param("type")
 	tokenS, f := ctx.Get("token")
 	token, flag := tokenS.(*auth.Token)
 	if !f || !flag {
@@ -58,6 +68,7 @@ func (u UserList) Delete(ctx *gin.Context) {
 	data := systemMode.UserBlacklist{
 		UserUuid:   token.UserUUID,
 		TargetUuid: target,
+		Type:       mapType(type_),
 	}
 	err := data.Delete()
 	if err != nil {
@@ -73,6 +84,6 @@ func (u UserList) Delete(ctx *gin.Context) {
 
 func (u UserList) RegisterRoute(route string, group *gin.RouterGroup) {
 	g := group.Group(route)
-	g.Handle("GET", "add", u.Add)
-	g.Handle("GET", "delete", u.Delete)
+	g.Handle("GET", "add/:type", u.Add)
+	g.Handle("GET", "delete/:type", u.Delete)
 }

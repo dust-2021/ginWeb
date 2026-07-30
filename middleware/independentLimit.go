@@ -11,9 +11,9 @@ import (
 )
 
 type independentLimiter struct {
-	minute   uint32
-	hour     uint32
-	day      uint32
+	minute   atomic.Uint32
+	hour     atomic.Uint32
+	day      atomic.Uint32
 	MinuteLm uint32
 	HourLm   uint32
 	DayLm    uint32
@@ -22,15 +22,15 @@ type independentLimiter struct {
 func (i *independentLimiter) Reset(p PeriodType) {
 	switch p {
 	case MinuteP:
-		atomic.StoreUint32(&i.minute, 0)
+		i.minute.Store(0)
 	case HourP:
-		atomic.StoreUint32(&i.hour, 0)
+		i.hour.Store(0)
 	case DayP:
-		atomic.StoreUint32(&i.day, 0)
+		i.day.Store(0)
 	case All:
-		atomic.StoreUint32(&i.minute, 0)
-		atomic.StoreUint32(&i.hour, 0)
-		atomic.StoreUint32(&i.day, 0)
+		i.minute.Store(0)
+		i.hour.Store(0)
+		i.day.Store(0)
 	default:
 		loguru.SimpleLog(loguru.Error, "LIMITER", fmt.Sprintf("unknown period type %d", p))
 	}
@@ -38,18 +38,18 @@ func (i *independentLimiter) Reset(p PeriodType) {
 }
 
 func (i *independentLimiter) handle() bool {
-	if i.MinuteLm != 0 && atomic.LoadUint32(&i.minute) > i.MinuteLm {
+	if i.MinuteLm != 0 && i.minute.Load() > i.MinuteLm {
 		return false
 	}
-	if i.HourLm != 0 && atomic.LoadUint32(&i.hour) > i.HourLm {
+	if i.HourLm != 0 && i.hour.Load() > i.HourLm {
 		return false
 	}
-	if i.DayLm != 0 && atomic.LoadUint32(&i.day) > i.DayLm {
+	if i.DayLm != 0 && i.day.Load() > i.DayLm {
 		return false
 	}
-	atomic.AddUint32(&i.minute, 1)
-	atomic.AddUint32(&i.hour, 1)
-	atomic.AddUint32(&i.day, 1)
+	i.minute.Add(1)
+	i.hour.Add(1)
+	i.day.Add(1)
 	return true
 }
 
