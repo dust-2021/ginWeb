@@ -68,7 +68,7 @@ func (i *independentLimiter) WsHandle(c *wes.WContext) {
 }
 
 type rollingIndependentLimiter struct {
-	count          uint32
+	count          atomic.Uint32
 	ReduceInMinute uint32
 	Limit          uint32
 }
@@ -88,17 +88,17 @@ func (r *rollingIndependentLimiter) Reset(p PeriodType) {
 		//		return
 		//	}
 		//}
-		old := atomic.LoadUint32(&r.count)
+		old := r.count.Load()
 		if old <= r.ReduceInMinute {
-			atomic.StoreUint32(&r.count, 0)
+			r.count.Store(0)
 		} else {
-			atomic.StoreUint32(&r.count, old-r.ReduceInMinute)
+			r.count.Store(old - r.ReduceInMinute)
 		}
 	}
 }
 
 func (r *rollingIndependentLimiter) handle() bool {
-	return atomic.LoadUint32(&r.count) < r.Limit
+	return r.count.Load() < r.Limit
 }
 
 func (r *rollingIndependentLimiter) HttpHandle(c *gin.Context) {

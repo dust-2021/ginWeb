@@ -57,12 +57,19 @@ type connManager struct {
 
 func (m *connManager) New(conn *websocket.Conn, token *auth.Token, mac string) *Connection {
 	// 创建生命周期管理上下文
-	ctx, cancel := context.WithTimeout(context.Background(), connectionLifeTime)
+	ctx, cancel := context.WithCancel(context.Background())
+	// 自动断开定时器
+	timer := time.AfterFunc(connectionLifeTime, func() {
+		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connection lifetime over from %s", conn.RemoteAddr().String()))
+		cancel()
+	})
+	defer timer.Stop()
 	c := &Connection{
 		conn:           conn,
 		Uuid:           uuid.New().String(),
 		lifetimeCtx:    ctx,
 		cancel:         cancel,
+		lifetimeTimer:  timer,
 		msgChan:        make(chan *payload, config.Conf.Server.Websocket.WsMaxWaiting),
 		heartChan:      make(chan int64, config.Conf.Server.Websocket.WsMaxWaiting),
 		lock:           sync.RWMutex{},
@@ -81,9 +88,6 @@ func (m *connManager) New(conn *websocket.Conn, token *auth.Token, mac string) *
 	}
 	loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connected from %s", conn.RemoteAddr()))
 	// 开启连接的监听和处理函数
-	go c.listen()
-	go c.handle()
-	c.heartbeat()
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.conns[c.Uuid] = c
@@ -93,6 +97,9 @@ func (m *connManager) New(conn *websocket.Conn, token *auth.Token, mac string) *
 		delete(m.conns, c.Uuid)
 		delete(m.userConnMap, c.UserUuid)
 	})
+	go c.listen()
+	go c.handle()
+	c.heartbeat()
 	return c
 }
 
@@ -140,6 +147,7 @@ type Connection struct {
 	// 生命周期上下文
 	lifetimeCtx    context.Context
 	cancel         context.CancelFunc
+	lifetimeTimer  *time.Timer   // 生命周期定时器
 	lock           sync.RWMutex  // 对象读写锁
 	msgChan        chan *payload // 信息信道
 	heartChan      chan int64    // 心跳监测信道
@@ -167,6 +175,15 @@ type Connection struct {
 // Done 连接生命周期
 func (c *Connection) Done() <-chan struct{} {
 	return c.lifetimeCtx.Done()
+}
+
+// 重置最长连接时间，延长连接生命周期
+func (c *Connection) ResetLifetime() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.lifetimeTimer != nil {
+		c.lifetimeTimer.Reset(connectionLifeTime)
+	}
 }
 
 // Send 发送消息

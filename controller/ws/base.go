@@ -24,6 +24,11 @@ func (b Base) Ping(w *wes.WContext) {
 	w.Result(dataType.Success, dt)
 }
 
+func (b Base) ResetLifetime(w *wes.WContext) {
+	w.Conn.ResetLifetime()
+	w.Result(dataType.Success, "reset lifetime success")
+}
+
 func (b Base) ServerTime(w *wes.WContext) {
 	w.Result(dataType.Success, time.Now().UnixMilli())
 }
@@ -38,4 +43,5 @@ func (b Base) RegisterWSRoute(r string, g *wes.Group) {
 	group.Register("ping", b.Ping)
 	group.Register("time", b.ServerTime)
 	group.Register("connectUuid", b.ConnectUuid)
+	group.Register("resetLifetime", b.ResetLifetime)
 }
