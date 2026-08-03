@@ -49,11 +49,10 @@ func application() *gin.Engine {
 
 func main() {
 
-	if config.Conf.Server.Debug {
-		go func() {
-			log.Println(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Conf.Server.PprofPort), nil))
-		}()
-	}
+	// 启动pprof
+	go func() {
+		log.Println(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", config.Conf.Server.PprofPort), nil))
+	}()
 	g := application()
 	// 启动定时器
 	scheduler.App.Start()

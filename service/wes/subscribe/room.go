@@ -361,7 +361,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 		return errors.New("room is full")
 	}
 	if r.Config.UserIdBlackList {
-		exist, err := systemMode.ExistInList(r.OwnerUuid(), c.UserUuid)
+		exist, err := systemMode.ExistInList(r.ownerConn.Uuid, c.UserUuid)
 		if err != nil {
 			return err
 		}
@@ -370,7 +370,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 		}
 	}
 	if r.Config.IPBlackList {
-		exist, err := systemMode.ExistInList(r.OwnerUuid(), c.IP)
+		exist, err := systemMode.ExistInList(r.ownerConn.Uuid, c.IP)
 		if err != nil {
 			return err
 		}
@@ -379,7 +379,7 @@ func (r *room) Subscribe(c *wes.Connection, args ...any) error {
 		}
 	}
 	if r.Config.DeviceBlackList {
-		exist, err := systemMode.ExistInList(r.OwnerUuid(), c.MacAddress)
+		exist, err := systemMode.ExistInList(r.ownerConn.Uuid, c.MacAddress)
 		if err != nil {
 			return err
 		}
