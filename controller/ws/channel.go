@@ -87,6 +87,7 @@ func (c ChannelController) Broadcast(w *wes.WContext) {
 	err = json.Unmarshal(w.Request.Params[1], &msg)
 	if err != nil {
 		w.Result(dataType.WrongBody, "invalid msg")
+		return
 	}
 	pub, ok := subscribe.Publishers.GetPub(name)
 	if !ok {
@@ -103,8 +104,7 @@ func (c ChannelController) RegisterWSRoute(r string, g *wes.Group) {
 
 	group := g.Group(r)
 
-	group.Register("broadcast", middleware.AuthMiddle.WsHandle,
-		middleware.NewPermission([]string{"channel.broadcast"}).WsHandle, c.Broadcast)
+	group.Register("broadcast", middleware.AuthMiddle.WsHandle, c.Broadcast)
 	group.Register("subscribe", c.SubHandle)
 	group.Register("unsubscribe", c.UnsubHandle)
 }
