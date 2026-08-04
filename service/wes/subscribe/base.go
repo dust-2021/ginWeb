@@ -8,6 +8,8 @@ type Pub interface {
 	Subscribe(connection *wes.Connection, args ...any) error
 	// UnSubscribe 取消订阅
 	UnSubscribe(connection *wes.Connection, args ...any) error
+	// IsSuber 判断是否订阅者
+	IsSuber(connection *wes.Connection) bool
 	// Publish 向收听者发送消息
 	Publish([]byte, *wes.Connection) error
 	// Start 启动事件

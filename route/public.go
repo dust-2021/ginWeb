@@ -13,7 +13,6 @@ import (
 	"ginWeb/middleware"
 	"ginWeb/service/wes"
 	"ginWeb/service/wes/subscribe"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -69,15 +68,9 @@ func InitWs(g *gin.Engine) {
 	room.RegisterWSRoute("room", wes.BasicGroup)
 	room.RegisterRoute("room", wsApi)
 
-	// 注册订阅事件
-	if config.Conf.Server.Debug {
-		subscribe.Publishers.NewPublisher("hello", "1s", func() string {
-			return "hello"
-		})
-	}
-	subscribe.Publishers.NewPublisher("time", "*/10 * * * * *", func() string {
-		return time.Now().Format("2006-01-02 15:04:05.000")
-	})
+	// subscribe.Publishers.NewPublisher("time", "*/10 * * * * *", func() string {
+	// 	return time.Now().Format("2006-01-02 15:04:05.000")
+	// })
 
 	// 注册系统大厅
 	subscribe.Publishers.NewPublisher("hall", "")

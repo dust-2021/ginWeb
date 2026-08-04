@@ -90,8 +90,8 @@ func (c ChannelController) Broadcast(w *wes.WContext) {
 		return
 	}
 	pub, ok := subscribe.Publishers.GetPub(name)
-	if !ok {
-		w.Result(dataType.NotFound, "not found pub")
+	if !ok || pub.IsSuber(w.Conn) == false {
+		w.Result(dataType.NotFound, "not found pub or not suber")
 		return
 	}
 	pub.Message(msg, w.Conn)

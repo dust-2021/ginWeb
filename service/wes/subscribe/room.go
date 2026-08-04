@@ -252,7 +252,7 @@ func (r *room) OwnerUuid() string {
 	return r.ownerConn.UserUuid
 }
 
-func (r *room) ExistMember(c *wes.Connection) bool {
+func (r *room) IsSuber(c *wes.Connection) bool {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	_, ok := r.subs[c]

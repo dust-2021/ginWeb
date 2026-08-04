@@ -117,7 +117,7 @@ func (p *Publisher) Subscribe(c *wes.Connection, args ...any) error {
 	p.subscribers[c] = &Subscriber{
 		Conn:  c,
 		Pub:   p,
-		Muted: true,
+		Muted: false,
 	}
 	loguru.SimpleLog(loguru.Debug, "WS", fmt.Sprintf("user from %s subscribe channel %s", c.IP, p.Name))
 	c.DoneHook("publish."+p.Name, func() {
@@ -128,6 +128,13 @@ func (p *Publisher) Subscribe(c *wes.Connection, args ...any) error {
 			c.IP, p.Name))
 	})
 	return nil
+}
+
+func (p *Publisher) IsSuber(c *wes.Connection) bool {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	_, ok := p.subscribers[c]
+	return ok
 }
 
 func (p *Publisher) UnSubscribe(c *wes.Connection, args ...any) error {
@@ -141,7 +148,7 @@ func (p *Publisher) UnSubscribe(c *wes.Connection, args ...any) error {
 }
 
 // Message 发送包装后的消息响应
-func (p *Publisher) Message(v string, sender *wes.Connection) {
+func (p *Publisher) Message(v string, sender *wes.Connection) error {
 	var id int64
 	var name string
 	var uuid string
@@ -163,9 +170,7 @@ func (p *Publisher) Message(v string, sender *wes.Connection) {
 		},
 	}
 	data, _ := json.Marshal(r)
-	go func() {
-		_ = p.Publish(data, sender)
-	}()
+	return p.Publish(data, sender)
 }
 
 func (p *Publisher) Publish(v []byte, sender *wes.Connection) error {

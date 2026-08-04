@@ -214,7 +214,7 @@ func (r RoomController) RoomMate(w *wes.WContext) {
 		w.Result(dataType.NotFound, "room not found")
 		return
 	}
-	if !room.ExistMember(w.Conn) {
+	if !room.IsSuber(w.Conn) {
 		w.Result(dataType.DeniedByPermission, "not in room")
 		return
 	}
@@ -302,7 +302,7 @@ func (r RoomController) RoomMessage(w *wes.WContext) {
 		w.Result(dataType.NotFound, "room not found")
 		return
 	}
-	if !room.ExistMember(w.Conn) {
+	if !room.IsSuber(w.Conn) {
 		w.Result(dataType.DeniedByPermission, "not in room")
 		return
 	}
