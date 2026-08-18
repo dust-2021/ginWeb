@@ -26,4 +26,5 @@ const (
 
 	WsResolveFailed = 10201
 	WsDuplicateAuth = 10202
+	WsAuthExpire    = 10203
 )

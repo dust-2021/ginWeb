@@ -44,7 +44,8 @@ func (l *loginStatus) HttpHandle(c *gin.Context) {
 
 func (l *loginStatus) WsHandle(w *wes.WContext) {
 	if w.Conn.UserId == 0 || w.Conn.AuthExpireTime.Before(time.Now()) {
-		w.Result(dataType.NoToken, "without auth")
+		w.Result(dataType.WsAuthExpire, "auth expired")
+		go w.Conn.Disconnect()
 	}
 }
 

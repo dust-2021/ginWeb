@@ -59,11 +59,15 @@ func (m *connManager) New(conn *websocket.Conn, token *auth.Token, mac string) *
 	// 创建生命周期管理上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	// 自动断开定时器
-	timer := time.AfterFunc(connectionLifeTime, func() {
-		loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connection lifetime over from %s", conn.RemoteAddr().String()))
-		cancel()
-	})
-	defer timer.Stop()
+	var timer *time.Timer
+	if connectionLifeTime == 0 {
+		timer = nil
+	} else {
+		timer = time.AfterFunc(connectionLifeTime, func() {
+			loguru.SimpleLog(loguru.Info, "WS", fmt.Sprintf("connection lifetime over from %s", conn.RemoteAddr().String()))
+			cancel()
+		})
+	}
 	c := &Connection{
 		conn:           conn,
 		Uuid:           uuid.New().String(),
@@ -90,12 +94,15 @@ func (m *connManager) New(conn *websocket.Conn, token *auth.Token, mac string) *
 	// 开启连接的监听和处理函数
 	m.lock.Lock()
 	defer m.lock.Unlock()
+	m.userConn(c.UserUuid, c.Uuid)
 	m.conns[c.Uuid] = c
 	c.DoneHook(managerHookName, func() {
 		m.lock.Lock()
 		defer m.lock.Unlock()
 		delete(m.conns, c.Uuid)
-		delete(m.userConnMap, c.UserUuid)
+		if m.userConnMap[c.UserUuid] == c.Uuid {
+			delete(m.userConnMap, c.UserUuid)
+		}
 	})
 	go c.listen()
 	go c.handle()
@@ -119,8 +126,6 @@ func (m *connManager) Count() int {
 
 // 设置userUuid和连接id的对应关系，已存在则断开旧连接
 func (m *connManager) userConn(userUuid string, connId string) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
 	if existConnId, f := m.userConnMap[userUuid]; f {
 		// 已存在映射，则断开旧链接
 		if existConn, ok := m.conns[existConnId]; ok {

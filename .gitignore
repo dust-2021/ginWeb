@@ -2,8 +2,7 @@
 .vscode
 extern/
 # 
-!extern/wireguard-go/device/peer.go
-!extern/wireguard-go/device/device.go
+locals/
 config.yaml
 product.yaml
 
